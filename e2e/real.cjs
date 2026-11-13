@@ -57,6 +57,12 @@ async function mailLink(address, after = 0) {
 }
 
 async function main() {
+  // Safety: only ever test a build that talks to the LOCAL stack.
+  const built = execFileSync('sh', ['-c', 'cat dist/assets/*.js'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  if (!built.includes('127.0.0.1:54321')) {
+    throw new Error('dist/ is not built against the local stack. Create .env.production.local (see .env.example) and run npm run build.')
+  }
+
   // ---- Clean start: no accounts, no mail, one owner created the documented way ----
   sql('delete from public.participant_invitations; delete from auth.users; delete from private.sign_in_attempts;')
   await fetch(`${MAIL}/api/v1/messages`, { method: 'DELETE' })

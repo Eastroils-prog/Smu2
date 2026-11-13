@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 // The publishable ("anon") key is meant to be public. The locks are in the database.
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+const key = import.meta.env.VITE_SUPABASE_PUBLIC_KEY as string | undefined
 
 export const isDemo = !url || !key
 
