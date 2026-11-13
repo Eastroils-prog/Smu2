@@ -1,29 +1,7 @@
-# Dependencies and build output
 node_modules
 dist
-dist-ssr
-*.tsbuildinfo
-
-# Local environment (never commit real keys)
-.env
-.env.*
-!.env.example
-*.local
-
-# Test output
-coverage
-test-results
-playwright-report
-blob-report
-e2e/.auth
-
-# Logs
-logs
-*.log
-npm-debug.log*
-
-# Editors / OS
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
+dist-single
+dist-demo
+.env.local
+supabase/.temp
+supabase/.branches
