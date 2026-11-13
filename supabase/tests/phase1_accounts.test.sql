@@ -2,7 +2,7 @@
 -- Every rule here is checked against the database itself, with no app in front.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(34);
+select plan(38);
 
 -- Start from an empty programme. Everything in this file is rolled back at the end.
 delete from public.participant_invitations;
@@ -105,6 +105,16 @@ select throws_ok($$select public.create_invitation('pal@example.com', 'Pal')$$,
   '42501', null, 'a participant cannot invite');
 select throws_ok($$select public.revoke_invitation('00000000-0000-0000-0000-000000000000')$$,
   '42501', null, 'a participant cannot revoke invitations');
+
+select throws_ok($$select public.reset_link_target('00000000-0000-0000-0000-000000000001')$$,
+  '42501', null, 'a participant cannot ask for a password link');
+
+select pg_temp.act_as(:boss);
+select is(public.reset_link_target(:ann), 'ann@example.com', 'the admin can get a password link target for a joined participant');
+select throws_ok($$select public.reset_link_target('00000000-0000-0000-0000-000000000003')$$,
+  'P0001', 'person_not_found', 'no password link for someone who has not joined yet');
+select throws_ok($$select public.reset_link_target('00000000-0000-0000-0000-000000000001')$$,
+  'P0001', 'person_not_found', 'no password link for the administrator account');
 
 select pg_temp.act_as(null);
 select throws_ok($$select count(*) from public.profiles$$, '42501', null, 'a visitor cannot read profiles');

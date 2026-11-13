@@ -60,10 +60,11 @@ for (const file of readdirSync('supabase/migrations').filter((f) => f.endsWith('
   console.log(`Migration ${file}: applied`)
 }
 
-const auth = { disable_signup: true, password_min_length: 10 }
+// One-time links (invitations, password resets) stay valid for 24 hours.
+const auth = { disable_signup: true, password_min_length: 10, mailer_otp_exp: 86400 }
 if (siteUrl) Object.assign(auth, { site_url: siteUrl, uri_allow_list: siteUrl })
 await call(`/projects/${ref}/config/auth`, { method: 'PATCH', body: auth })
-console.log(`Auth: public sign-up off, passwords at least 10 characters${siteUrl ? `, site ${siteUrl}` : ''}`)
+console.log(`Auth: public sign-up off, passwords at least 10 characters, links valid 24 hours${siteUrl ? `, site ${siteUrl}` : ''}`)
 
 const keys = await call(`/projects/${ref}/api-keys`)
 const anon = keys.find((k) => k.name === 'anon') ?? keys.find((k) => k.type === 'publishable')

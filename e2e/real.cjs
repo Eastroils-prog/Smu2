@@ -88,6 +88,15 @@ async function main() {
       if (m.type() === 'error' && !/status of 40[01379]|status of 429/.test(m.text())) problems.push(`[${who}] console: ${m.text()}`)
     })
   }
+  /** The one-time link shown on screen, inside `scope`. */
+  const shownLink = async (scope) => {
+    const box = scope.getByTestId('share-link').locator('input')
+    await box.waitFor()
+    const link = await box.inputValue()
+    assert.match(link, /\/auth\/v1\/verify\?/)
+    return link
+  }
+  const mailCount = async () => (await (await fetch(`${MAIL}/api/v1/messages`)).json()).messages.length
   const snap = async (page, name) => {
     const wide = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
     if (wide) problems.push(`"${name}" scrolls sideways`)
@@ -132,13 +141,23 @@ async function main() {
       await owner.getByRole('button', { name: 'Invite a person' }).click()
       await owner.getByLabel('Their name').fill(name)
       await owner.getByLabel('Their e-mail').fill(email)
-      await owner.getByRole('button', { name: 'Send invitation' }).click()
+      await owner.getByRole('button', { name: 'Make invitation link' }).click()
+    }
+    /** Invite, read the link from the dialog, close it. */
+    const inviteAndGetLink = async (name, email) => {
+      await invite(name, email)
+      const dialog = owner.getByRole('dialog')
+      const link = await shownLink(dialog)
+      await dialog.getByRole('button', { name: 'Done' }).click()
+      return link
     }
     await invite('Sam Baker', 'sam@example.com')
+    const samLink = await shownLink(owner.getByRole('dialog'))
+    await snap(owner, 'owner-invite-link')
+    await owner.getByRole('dialog').getByRole('button', { name: 'Done' }).click()
     await owner.getByTestId('invitation').filter({ hasText: 'Sam Baker' }).waitFor()
-    const samLink = await mailLink('sam@example.com')
-    await snap(owner, 'owner-people-invited')
-    ok('the owner invites Sam, and a real e-mail with a link is sent')
+    assert.equal(await mailCount(), 0)
+    ok('the owner invites Sam and gets a link to send; no e-mail is sent')
 
     await invite('Sam Again', 'sam@example.com')
     await owner.getByRole('alert').getByText('already').waitFor()
@@ -197,10 +216,9 @@ async function main() {
 
     // ---- Cancel and re-send ----
     await owner.getByRole('link', { name: 'All people' }).click()
-    await invite('Kim Reyes', 'kim@example.com')
+    const kimLink = await inviteAndGetLink('Kim Reyes', 'kim@example.com')
     const kimRow = owner.getByTestId('invitation').filter({ hasText: 'Kim Reyes' })
     await kimRow.waitFor()
-    const kimLink = await mailLink('kim@example.com')
     await kimRow.getByRole('button', { name: 'Cancel invitation' }).click()
     await kimRow.getByRole('button', { name: 'Yes, cancel it' }).click()
     await kimRow.waitFor({ state: 'detached' })
@@ -213,27 +231,37 @@ async function main() {
     await kimCtx.close()
     ok('a cancelled invitation link no longer works')
 
-    await invite('Lee Park', 'lee@example.com')
-    const leeRow = owner.getByTestId('invitation').filter({ hasText: 'Lee Park' })
+    const firstLeeLink = await inviteAndGetLink('Lee Park', 'lee@example.com')
+    let leeRow = owner.getByTestId('invitation').filter({ hasText: 'Lee Park' })
     await leeRow.waitFor()
-    const firstLeeLink = await mailLink('lee@example.com')
-    const before = Date.now()
-    await sleep(1100)
-    await leeRow.getByRole('button', { name: 'Send again' }).click()
-    const secondLeeLink = await mailLink('lee@example.com', before)
+    await leeRow.getByRole('button', { name: 'Get a new link' }).click()
+    leeRow = owner.getByTestId('invitation').filter({ hasText: 'Lee Park' })
+    // The row already shows the first link; wait for it to be replaced.
+    let secondLeeLink = firstLeeLink
+    for (let i = 0; i < 40 && secondLeeLink === firstLeeLink; i++) {
+      await sleep(250)
+      secondLeeLink = await shownLink(leeRow)
+    }
     assert.notEqual(firstLeeLink, secondLeeLink)
-    await owner.getByTestId('invitation').filter({ hasText: 'Lee Park' }).waitFor()
-    ok('"Send again" sends a fresh e-mail with a new link')
+    const leeCtx = await browser.newContext()
+    const lee = await leeCtx.newPage()
+    await lee.goto(firstLeeLink)
+    await lee.getByRole('heading', { name: 'Sign in' }).waitFor()
+    assert.equal(await lee.getByRole('heading', { name: /Welcome/ }).count(), 0)
+    await lee.goto(secondLeeLink)
+    await lee.getByRole('heading', { name: 'Welcome, Lee!' }).waitFor()
+    await leeCtx.close()
+    ok('"Get a new link" makes a fresh link, and the old one stops working')
 
-    // ---- Forgot password ----
+    // ---- Forgot password: the owner makes a link ----
     await sam.getByRole('button', { name: 'Sign out' }).click()
     await sam.getByRole('link', { name: 'Forgot your password?' }).click()
-    await sam.getByLabel('Username').fill('sam.b')
-    const beforeReset = Date.now()
-    await sleep(1100)
-    await sam.getByRole('button', { name: 'Send me the link' }).click()
-    await sam.getByRole('status').getByText('If that username exists').waitFor()
-    await sam.goto(await mailLink('sam@example.com', beforeReset))
+    await sam.getByText('Ask the programme owner for a new link').waitFor()
+    await owner.getByRole('link', { name: /Sam Baker/ }).click()
+    await owner.getByRole('button', { name: 'Make a password link' }).click()
+    const resetLink = await shownLink(owner.locator('main'))
+    await snap(owner, 'owner-reset-link')
+    await sam.goto(resetLink)
     await sam.getByRole('heading', { name: 'Choose a new password' }).waitFor()
     await sam.getByLabel(/New password/).fill('short')
     await sam.getByRole('button', { name: 'Save new password' }).click()
@@ -243,7 +271,15 @@ async function main() {
     await sam.getByRole('heading', { name: 'My profile' }).waitFor()
     assert.equal((await signInApi('sam.b', SAM_PASSWORD)).status, 401)
     assert.equal((await signInApi('sam.b', SAM_NEW_PASSWORD)).status, 200)
-    ok('forgot password: e-mail link, a too-short password is refused, the new one works and the old one does not')
+    sql('delete from private.sign_in_attempts;')
+    const reuse = await browser.newContext()
+    const reusePage = await reuse.newPage()
+    await reusePage.goto(resetLink)
+    await reusePage.getByRole('heading', { name: 'Sign in' }).waitFor()
+    assert.equal(await reusePage.getByRole('heading', { name: 'Choose a new password' }).count(), 0)
+    await reuse.close()
+    assert.equal(await mailCount(), 0)
+    ok('forgot password: the owner makes a link, Sam chooses a new password, and the link cannot be used twice')
 
     // ---- 4. Security: try every door, straight at the back end ----
     section('3. Security (talking to the back end directly, skipping the screens)')
@@ -291,6 +327,15 @@ async function main() {
     assert.ok(!(await api('/rest/v1/rpc/create_invitation', { method: 'POST', token: samToken, body: { p_email: 'friend@example.com', p_full_name: 'Friend' } })).ok)
     assert.equal(sql("select count(*) from public.participant_invitations where email = 'friend@example.com'"), '0')
     ok('Sam cannot invite anyone')
+
+    for (const target of [ownerId, samId]) {
+      const res = await api('/functions/v1/invite-participant', { method: 'POST', token: samToken, body: { action: 'reset-link', profile_id: target } })
+      assert.equal(res.status, 403)
+      assert.ok(!res.data.link)
+    }
+    const ownerSelf = await api('/functions/v1/invite-participant', { method: 'POST', token: ownerToken, body: { action: 'reset-link', profile_id: ownerId } })
+    assert.ok(!ownerSelf.ok && !ownerSelf.data.link)
+    ok("Sam cannot make a password link for anyone, and no link can be made for the owner's account")
 
     const noToken = await api('/functions/v1/invite-participant', { method: 'POST', body: { action: 'invite', email: 'x@example.com', full_name: 'X' } })
     assert.ok(noToken.status === 401 || noToken.status === 403)
