@@ -9,3 +9,4 @@ awaiting approval; no application code has been written yet.
 
 - [Architecture & implementation plan](docs/ARCHITECTURE.md)
 - [Database schema (design reference)](docs/schema.sql)
+- [The plan in plain words (PRD)](docs/PRD.md)
