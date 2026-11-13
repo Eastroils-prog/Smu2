@@ -10,7 +10,6 @@ interface Auth {
   recovering: boolean
   signIn: (username: string, password: string) => Promise<'ok' | 'wrong' | 'locked' | 'error'>
   signOut: () => Promise<void>
-  forgotPassword: (username: string) => Promise<void>
   finishRecovery: () => void
   reloadProfile: () => Promise<void>
 }
@@ -25,16 +24,16 @@ async function callFunction(name: string, body: unknown, token?: string): Promis
   })
 }
 
-/** Call a server function as the signed-in person. Returns the error code, or null on success. */
-export async function callAsMe(name: string, body: unknown): Promise<string | null> {
+/** Call a server function as the signed-in person. `error` is null on success; `link` is set when the server made one. */
+export async function callAsMe(name: string, body: unknown): Promise<{ error: string | null; link: string | null }> {
   const { data } = await supabase.auth.getSession()
   try {
     const res = await callFunction(name, body, data.session?.access_token)
-    if (res.ok) return null
     const payload = await res.json().catch(() => ({}))
-    return typeof payload.error === 'string' ? payload.error : 'server_error'
+    if (res.ok) return { error: null, link: typeof payload.link === 'string' ? payload.link : null }
+    return { error: typeof payload.error === 'string' ? payload.error : 'server_error', link: null }
   } catch {
-    return 'network_error'
+    return { error: 'network_error', link: null }
   }
 }
 
@@ -103,9 +102,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       signOut: async () => {
         await supabase.auth.signOut()
-      },
-      forgotPassword: async (username) => {
-        await callFunction('sign-in', { action: 'forgot', username, redirect_to: window.location.origin }).catch(() => null)
       },
       finishRecovery: () => setRecovering(false),
       reloadProfile: () => loadProfile(session?.user.id),

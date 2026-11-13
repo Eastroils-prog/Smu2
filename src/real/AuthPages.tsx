@@ -67,7 +67,7 @@ export function SignInPage() {
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(
-    linkError ? 'That link has expired or was already used. Ask the owner to send a new one, or use "Forgot your password?".' : '',
+    linkError ? 'That link has expired or was already used. Ask the programme owner for a new one.' : '',
   )
 
   const submit = async (e: React.FormEvent) => {
@@ -112,7 +112,7 @@ export function SignInPage() {
           Forgot your password?
         </Link>
       </form>
-      <p className="text-sm text-muted">There is no sign-up page. The programme owner invites each person by e-mail.</p>
+      <p className="text-sm text-muted">There is no sign-up page. The programme owner invites each person with a personal link.</p>
     </AuthFrame>
   )
 }
@@ -120,48 +120,12 @@ export function SignInPage() {
 // ---------- Forgot password ----------
 
 export function ForgotPage() {
-  const { forgotPassword } = useAuth()
-  const [username, setUsername] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [sent, setSent] = useState(false)
-
   return (
     <AuthFrame>
       <div className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5">
         <h1 className="text-lg font-semibold">Forgot your password?</h1>
-        {sent ? (
-          <p role="status">
-            If that username exists, we sent an e-mail with a link to choose a new password. It can take a minute to arrive.
-          </p>
-        ) : (
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={async (e) => {
-              e.preventDefault()
-              if (!username.trim()) return
-              setBusy(true)
-              await forgotPassword(username.trim().toLowerCase())
-              setBusy(false)
-              setSent(true)
-            }}
-          >
-            <p className="text-sm text-muted">Type your username. We will e-mail you a link to choose a new password.</p>
-            <Field label="Username" htmlFor="forgot-username">
-              <input
-                id="forgot-username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoCapitalize="none"
-                autoCorrect="off"
-                autoComplete="username"
-                className={inputClass}
-              />
-            </Field>
-            <Button type="submit" disabled={busy || !username.trim()}>
-              {busy ? 'Sending…' : 'Send me the link'}
-            </Button>
-          </form>
-        )}
+        <p>Ask the programme owner for a new link. They can make one for you in a few seconds.</p>
+        <p className="text-sm text-muted">Open the link they send you, and you can choose a new password. The link works once, for 24 hours.</p>
         <Link to="/sign-in" className="self-start text-sm font-medium text-accent-strong">
           Back to sign in
         </Link>

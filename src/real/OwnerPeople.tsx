@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Mail, UserPlus } from 'lucide-react'
+import { ArrowLeft, Check, Copy, Link2, UserPlus } from 'lucide-react'
 import { PROFILE_COLUMNS, supabase, type Invitation, type Profile, type Stage } from '../lib/supabase'
 import { formatDate } from '../lib/data'
 import { Avatar, Badge, Button, Card, Empty, Field, Modal, PageTitle, SectionTitle, inputClass } from '../features/shared/ui'
@@ -48,12 +48,50 @@ function useInvitations() {
 
 const INVITE_ERRORS: Record<string, string> = {
   email_in_use: 'Someone with that e-mail is already in the programme.',
-  already_invited: 'That e-mail already has an invitation waiting. You can re-send it from the list.',
+  already_invited: 'That e-mail already has an invitation waiting. You can get a new link for it from the list.',
   invalid_input: 'Check the name and the e-mail address.',
-  email_not_sent: 'We could not send the e-mail. Please try again in a minute.',
+  link_not_created: 'We could not make the link. Please try again in a minute.',
+  person_not_found: 'We could not find that person.',
   not_allowed: 'Only the owner can do this.',
 }
 const inviteError = (code: string) => INVITE_ERRORS[code] ?? 'Something went wrong. Please try again.'
+
+/** A one-time link the owner copies and sends to the person themselves. */
+function ShareLink({ link, forWhom }: { link: string; forWhom: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async (e: React.MouseEvent) => {
+    const input = (e.currentTarget.parentElement?.querySelector('input') ?? null) as HTMLInputElement | null
+    try {
+      await navigator.clipboard.writeText(link)
+      setCopied(true)
+    } catch {
+      // Copying was refused: select the text so it can be copied by hand.
+      input?.select()
+    }
+  }
+  return (
+    <div className="flex flex-col gap-2 rounded-xl bg-accent-soft p-3" data-testid="share-link">
+      <p className="text-sm font-semibold">Send this link to {forWhom}</p>
+      <div className="flex gap-2">
+        <label htmlFor={`link-${link.length}-${forWhom}`} className="sr-only">Link for {forWhom}</label>
+        <input
+          id={`link-${link.length}-${forWhom}`}
+          readOnly
+          value={link}
+          onFocus={(e) => e.currentTarget.select()}
+          className={`${inputClass} min-w-0 flex-1 text-sm`}
+        />
+        <Button small type="button" onClick={(e) => void copy(e)}>
+          {copied ? <Check size={15} /> : <Copy size={15} />}
+          {copied ? 'Copied' : 'Copy'}
+        </Button>
+      </div>
+      <p className="text-sm text-muted">
+        Send it yourself, for example by WhatsApp or e-mail. It works once and for 24 hours. Whoever opens it first can use it, so send it only to {forWhom}. You cannot see this link again later, but you can always make a new one.
+      </p>
+    </div>
+  )
+}
 
 function LoadError() {
   return <p role="alert" className="rounded-xl bg-danger-soft px-4 py-3 text-danger">We could not load this. Check your connection and reload the page.</p>
@@ -135,21 +173,27 @@ export function OwnerPeople() {
   )
 }
 
+// Links made in this visit, by e-mail address. They are kept only in memory:
+// the server never stores a link, so it cannot be shown again after a reload.
+const newLinks = new Map<string, string>()
+
 function InvitationRow({ invitation }: { invitation: Invitation }) {
   const client = useQueryClient()
   const [busy, setBusy] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [note, setNote] = useState('')
   const expired = new Date(invitation.expires_at).getTime() < Date.now()
+  const fresh = newLinks.get(invitation.email)
 
   const run = async (action: 'resend' | 'revoke') => {
     setBusy(true)
     setNote('')
-    const failed = await callAsMe('invite-participant', { action, invitation_id: invitation.id, redirect_to: window.location.origin })
+    const result = await callAsMe('invite-participant', { action, invitation_id: invitation.id, redirect_to: window.location.origin })
     setBusy(false)
     setConfirming(false)
-    if (failed) setNote(inviteError(failed))
-    else if (action === 'resend') setNote('Sent again.')
+    if (result.error) setNote(inviteError(result.error))
+    // A new link replaces the invitation row, so remember it by e-mail address.
+    else if (result.link) newLinks.set(invitation.email, result.link)
     await client.invalidateQueries({ queryKey: ['invitations'] })
     await client.invalidateQueries({ queryKey: ['people'] })
   }
@@ -158,29 +202,30 @@ function InvitationRow({ invitation }: { invitation: Invitation }) {
     <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4" data-testid="invitation">
       <div className="flex flex-wrap items-center gap-3">
         <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sunken text-muted">
-          <Mail size={17} />
+          <Link2 size={17} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-semibold">{invitation.full_name}</span>
           <span className="block text-sm break-all text-muted">{invitation.email}</span>
         </span>
-        {expired ? <Badge tone="danger">Expired</Badge> : <Badge tone="warn">Good until {formatDate(invitation.expires_at)}</Badge>}
+        {expired ? <Badge tone="danger">Expired</Badge> : <Badge tone="warn">Waiting since {formatDate(invitation.created_at)}</Badge>}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {confirming ? (
           <>
-            <span className="text-sm">Cancel this invitation? The link in their e-mail will stop working.</span>
+            <span className="text-sm">Cancel this invitation? Their link will stop working.</span>
             <Button small disabled={busy} onClick={() => void run('revoke')}>Yes, cancel it</Button>
             <Button small variant="secondary" disabled={busy} onClick={() => setConfirming(false)}>Keep it</Button>
           </>
         ) : (
           <>
-            <Button small variant="secondary" disabled={busy} onClick={() => void run('resend')}>Send again</Button>
+            <Button small variant="secondary" disabled={busy} onClick={() => void run('resend')}>Get a new link</Button>
             <Button small variant="ghost" disabled={busy} onClick={() => setConfirming(true)}>Cancel invitation</Button>
           </>
         )}
         {note && <span role="status" className="text-sm text-muted">{note}</span>}
       </div>
+      {fresh && <ShareLink link={fresh} forWhom={invitation.full_name} />}
     </div>
   )
 }
@@ -192,6 +237,18 @@ function InviteModal({ stages, onClose }: { stages: Stage[]; onClose: () => void
   const [stageId, setStageId] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [link, setLink] = useState('')
+
+  if (link) {
+    return (
+      <Modal title="Invitation ready" onClose={onClose}>
+        <div className="flex flex-col gap-4">
+          <ShareLink link={link} forWhom={name.trim()} />
+          <Button type="button" onClick={onClose}>Done</Button>
+        </div>
+      </Modal>
+    )
+  }
 
   return (
     <Modal title="Invite a person" onClose={onClose}>
@@ -206,7 +263,7 @@ function InviteModal({ stages, onClose }: { stages: Stage[]; onClose: () => void
           }
           setBusy(true)
           setError('')
-          const failed = await callAsMe('invite-participant', {
+          const result = await callAsMe('invite-participant', {
             action: 'invite',
             full_name: name.trim(),
             email: email.trim(),
@@ -214,12 +271,13 @@ function InviteModal({ stages, onClose }: { stages: Stage[]; onClose: () => void
             redirect_to: window.location.origin,
           })
           setBusy(false)
-          if (failed) {
-            setError(inviteError(failed))
+          if (result.error || !result.link) {
+            setError(inviteError(result.error ?? 'link_not_created'))
             return
           }
+          newLinks.set(email.trim().toLowerCase(), result.link)
           await client.invalidateQueries({ queryKey: ['invitations'] })
-          onClose()
+          setLink(result.link)
         }}
       >
         <Field label="Their name" htmlFor="invite-name">
@@ -235,9 +293,9 @@ function InviteModal({ stages, onClose }: { stages: Stage[]; onClose: () => void
             ))}
           </select>
         </Field>
-        <p className="text-sm text-muted">They get an e-mail with a link. The link works for 14 days. They pick their own username and password.</p>
+        <p className="text-sm text-muted">You get a link to send them yourself. They open it and pick their own username and password.</p>
         {error && <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
-        <Button type="submit" disabled={busy}>{busy ? 'Sending…' : 'Send invitation'}</Button>
+        <Button type="submit" disabled={busy}>{busy ? 'Making the link…' : 'Make invitation link'}</Button>
       </form>
     </Modal>
   )
@@ -250,6 +308,8 @@ export function OwnerPerson() {
   const client = useQueryClient()
   const stages = useStages()
   const [note, setNote] = useState('')
+  const [resetLink, setResetLink] = useState('')
+  const [resetBusy, setResetBusy] = useState(false)
   const person = useQuery({
     queryKey: ['people', id],
     queryFn: async () => {
@@ -329,6 +389,30 @@ export function OwnerPerson() {
         ) : (
           <Button variant="secondary" onClick={() => void change({ archived_at: new Date().toISOString() }, 'Archived.')}>Archive</Button>
         )}
+      </Card>
+
+      <Card className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold">Forgot their password?</h2>
+            <p className="text-sm text-muted">Make a link that lets them choose a new password, and send it to them.</p>
+          </div>
+          <Button
+            variant="secondary"
+            disabled={resetBusy}
+            onClick={async () => {
+              setResetBusy(true)
+              setNote('')
+              const result = await callAsMe('invite-participant', { action: 'reset-link', profile_id: id, redirect_to: window.location.origin })
+              setResetBusy(false)
+              if (result.error || !result.link) setNote(inviteError(result.error ?? 'link_not_created'))
+              else setResetLink(result.link)
+            }}
+          >
+            {resetBusy ? 'Making the link…' : 'Make a password link'}
+          </Button>
+        </div>
+        {resetLink && <ShareLink link={resetLink} forWhom={p.full_name} />}
       </Card>
 
       {note && <p role="status" className="text-sm font-medium text-accent-strong">{note}</p>}

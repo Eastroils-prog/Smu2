@@ -168,6 +168,9 @@ have **not** tested yet. I will never say "it works" unless a test showed it.
 
 I have picked an answer for each. If you say nothing, I will use my pick.
 
+0. **Decided:** invitations and password resets are **links you send yourself**
+   (for example by WhatsApp). No e-mail service is needed. Automatic e-mail can
+   be added later.
 0. **Decided:** people sign in with a **username** and a password. The e-mail
    is only used for the invitation and for "forgot my password".
 1. **What language should the app be in?** My pick: English only. If you want
