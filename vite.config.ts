@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), tailwindcss(), ...(mode === 'single' ? [viteSingleFile()] : [])],
     build: { outDir: mode === 'single' ? 'dist-single' : mode === 'demo' ? 'dist-demo' : 'dist' },
     define: sample
-      ? { 'import.meta.env.VITE_SUPABASE_URL': '""', 'import.meta.env.VITE_SUPABASE_ANON_KEY': '""' }
+      ? { 'import.meta.env.VITE_SUPABASE_URL': '""', 'import.meta.env.VITE_SUPABASE_PUBLIC_KEY': '""' }
       : {},
   }
 })

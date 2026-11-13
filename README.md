@@ -31,9 +31,12 @@ Needs Docker.
 ```
 npx supabase start                # database, auth, mail catcher (http://127.0.0.1:54324)
 npx supabase functions serve      # in a second terminal
-cp .env.example .env.local        # then fill in the URL and anon key that `supabase status` prints
+cp .env.example .env.local && cp .env.example .env.production.local
+                                  # fill both in with the URL and anon key that `supabase status` prints
 npm run dev
 ```
+
+The live website reads its two public settings from `.env.production`.
 
 Create the one administrator (once):
 
