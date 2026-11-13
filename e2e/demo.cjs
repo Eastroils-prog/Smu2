@@ -1,15 +1,15 @@
 // Click-through check of the sample version.
-// Run `npm run build` first, then `npm run test:e2e`.
+// Run `npm run build:demo` first, then `npm run test:e2e`.
 const { chromium } = require('playwright')
 const { spawn } = require('node:child_process')
 const assert = require('node:assert/strict')
 
-const PORT = 4173
+const PORT = 4174
 const URL = `http://localhost:${PORT}/`
 const shots = process.env.SHOTS_DIR
 
 async function main() {
-  const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' })
+  const server = spawn('npx', ['vite', 'preview', '--mode', 'demo', '--outDir', 'dist-demo', '--port', String(PORT), '--strictPort'], { stdio: 'ignore', detached: true })
   const browser = await chromium.launch()
   const problems = []
   let step = 0
@@ -200,7 +200,8 @@ async function main() {
     }
   } finally {
     await browser.close()
-    server.kill()
+    // Stop the preview server and the process it started.
+    try { process.kill(-server.pid) } catch {}
   }
 
   if (problems.length) {

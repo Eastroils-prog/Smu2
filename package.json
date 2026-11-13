@@ -8,9 +8,14 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test:e2e": "node e2e/demo.cjs",
-    "build:single": "vite build --mode single && node scripts/single-page.mjs"
+    "build:single": "vite build --mode single && node scripts/single-page.mjs",
+    "build:demo": "tsc --noEmit && vite build --mode demo",
+    "test:real": "node e2e/real.cjs",
+    "test:db": "supabase test db"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
+    "@tanstack/react-query": "^5.107.1",
     "lucide-react": "^1.72.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -21,6 +26,7 @@
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^6.3.0",
+    "supabase": "^3.1.0",
     "tailwindcss": "^4.3.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",

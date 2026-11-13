@@ -155,7 +155,12 @@ have **not** tested yet. I will never say "it works" unless a test showed it.
   passed. For example: "Can guest A read guest B's messages?" The answer was no.
 - **Step 1, the food stand, is built.** You can click through every screen with
   made-up people. It was checked on phone and computer sizes.
-- **Not done:** the real kitchen and the real locks. Nothing is saved yet.
+- **Step 2a, doors and locks, is built and tested on a practice kitchen.**
+  Real sign-in with a username and password, real invitations by e-mail,
+  "forgot my password", and real profiles that are saved. 34 lock checks inside
+  the kitchen and 31 checks through the app all pass.
+- **Not done yet:** putting it on your own Supabase account so you can use it
+  (the next thing we do together), and parts 2b, 2c and 2d.
 
 ---
 
@@ -163,6 +168,8 @@ have **not** tested yet. I will never say "it works" unless a test showed it.
 
 I have picked an answer for each. If you say nothing, I will use my pick.
 
+0. **Decided:** people sign in with a **username** and a password. The e-mail
+   is only used for the invitation and for "forgot my password".
 1. **What language should the app be in?** My pick: English only. If you want
    another language, tell me *now*. Adding it later is much more work.
 2. **How should the progress bar count?** My pick: by stages. Each stage is one

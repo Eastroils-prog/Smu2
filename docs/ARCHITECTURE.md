@@ -28,7 +28,28 @@ the earlier design and must be revised before Phase 1 and Phase 3 start.**
 |---|---|
 | Participants can message other participants | `conversations` is no longer "exactly one per participant". It becomes a conversation between any two people, with RLS by membership. Participants need to read a minimal directory of other participants (name and avatar only). Open decision: whether the administrator can read participant-to-participant conversations (the sample assumes not). |
 | Pictures and files attached to handed-in work | Already covered by `attachments` on `task_submissions`; needs upload UI, size and type limits, and storage policies tested in Phase 4. |
-| Sign in with a username and password | Supabase Auth signs in by e-mail. Either keep e-mail as the sign-in name, or add a unique `username` to `profiles` and resolve it to an e-mail server-side. Open decision. |
+| Sign in with a username and password | **Decided and built (Phase 1).** `profiles.username` is unique and chosen when the invitation is accepted. The `sign-in` Edge Function resolves it to the e-mail server-side, so the e-mail never reaches the browser; unknown usernames and wrong passwords give the same answer; five failures in 15 minutes lock the username. "Forgot password" goes through the same function and always gives the same answer. |
+
+---
+
+### Phase 1 as built
+
+Source of truth: `supabase/migrations/`, `supabase/functions/`, `supabase/tests/`.
+Differences from the proposal below:
+
+- Two Edge Functions, not one: `sign-in` (username sign-in, forgot password) and
+  `invite-participant` (invite, re-send, cancel). Neither has external imports.
+- Authorization for inviting lives in the database: the function calls
+  `create_invitation` / `revoke_invitation` with the caller's own token.
+- Participants can read **only their own** profile row. The earlier policy let
+  them read the administrator's row, which exposed the administrator's e-mail.
+  A names-only directory for messaging will be added in Phase 3.
+- `provision_admin(email, username)` takes the administrator's username.
+- Archived and not-yet-accepted accounts are read-only (enforced in `profiles_guard`).
+- Verified by `npm run test:db` (34 pgTAP assertions) and `npm run test:real`
+  (31 end-to-end checks against the local stack, including direct API attacks).
+- Not yet done for Phase 1: deployment to a hosted project, a real e-mail
+  provider, avatar upload, admin settings screens.
 
 ---
 
