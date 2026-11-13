@@ -28,6 +28,8 @@ export async function readBody(req: Request): Promise<Record<string, unknown>> {
   }
 }
 
+export const asService = `Bearer ${SERVICE_KEY}`
+
 export const asString = (v: unknown, max = 500): string => (typeof v === 'string' ? v.slice(0, max) : '')
 
 interface RpcResult {
@@ -42,7 +44,13 @@ interface RpcResult {
 export async function rpc(name: string, args: unknown, authorization: string): Promise<RpcResult> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
     method: 'POST',
-    headers: { apikey: ANON_KEY, Authorization: authorization, 'Content-Type': 'application/json' },
+    // When acting as the service, the service key must also be the `apikey`:
+    // newer Supabase keys are only accepted in that header.
+    headers: {
+      apikey: authorization === asService ? SERVICE_KEY : ANON_KEY,
+      Authorization: authorization,
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify(args),
   })
   const text = await res.text()
@@ -56,4 +64,3 @@ export async function rpc(name: string, args: unknown, authorization: string): P
   return { ok: res.ok, status: res.status, data, message }
 }
 
-export const asService = `Bearer ${SERVICE_KEY}`
