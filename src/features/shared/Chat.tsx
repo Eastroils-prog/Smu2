@@ -1,20 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, CheckCheck, Send } from 'lucide-react'
-import { formatWhen, type Role } from '../../lib/data'
+import { formatWhen, threadBetween } from '../../lib/data'
 import { useStore } from '../../lib/store'
 import { Button, Empty, inputClass } from './ui'
 
-/** One private conversation between the owner and one participant. */
-export function Chat({ personId, viewer }: { personId: string; viewer: Role }) {
+/** One private conversation between two people. `me` is the person looking at the screen. */
+export function Chat({ me, other }: { me: string; other: string }) {
   const { state, sendMessage, markRead } = useStore()
   const [draft, setDraft] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
-  const messages = state.messages.filter((m) => m.personId === personId)
+  const messages = threadBetween(state, me, other)
 
   // Opening the conversation counts as reading it.
   useEffect(() => {
-    markRead(personId, viewer)
-  }, [personId, viewer, messages.length, markRead])
+    markRead(me, other)
+  }, [me, other, messages.length, markRead])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'nearest' })
@@ -24,7 +24,7 @@ export function Chat({ personId, viewer }: { personId: string; viewer: Role }) {
     e.preventDefault()
     const body = draft.trim()
     if (!body) return
-    sendMessage(personId, viewer, body)
+    sendMessage(me, other, body)
     setDraft('')
   }
 
@@ -33,7 +33,7 @@ export function Chat({ personId, viewer }: { personId: string; viewer: Role }) {
       <div className="flex max-h-[26rem] flex-col gap-2 overflow-y-auto rounded-xl bg-sunken p-3" data-testid="chat-thread">
         {messages.length === 0 && <Empty>No messages yet. Say hello!</Empty>}
         {messages.map((m) => {
-          const mine = m.from === viewer
+          const mine = m.from === me
           return (
             <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
               <div
@@ -58,11 +58,11 @@ export function Chat({ personId, viewer }: { personId: string; viewer: Role }) {
         <div ref={endRef} />
       </div>
       <form onSubmit={send} className="flex gap-2">
-        <label htmlFor={`chat-input-${personId}`} className="sr-only">
+        <label htmlFor={`chat-input-${other}`} className="sr-only">
           Write a message
         </label>
         <input
-          id={`chat-input-${personId}`}
+          id={`chat-input-${other}`}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Write a message"

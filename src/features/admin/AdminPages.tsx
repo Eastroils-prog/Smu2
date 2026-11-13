@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ChevronRight, CircleCheck, Circle, Lock, Plus, UserPlus } from 'lucide-react'
 import {
-  STAGES, attentionFor, daysFromNow, daysSince, formatDate, formatDue, formatWhen, isOverdue, progressOf,
-  stageShare, unreadCount, type Person, type Priority,
+  OWNER_ID, STAGES, attentionFor, daysFromNow, daysSince, formatDate, formatDue, formatWhen, isOverdue, progressOf,
+  stageShare, threadBetween, unreadFrom, unreadTotal, type Person, type Priority,
 } from '../../lib/data'
 import { useStore } from '../../lib/store'
 import { Chat } from '../shared/Chat'
@@ -21,7 +21,7 @@ export function AdminDashboard() {
     .map((p) => ({ person: p, reasons: attentionFor(state, p) }))
     .filter((x) => x.reasons.some((r) => r.tone !== 'info'))
   const toCheck = state.tasks.filter((t) => t.status === 'submitted')
-  const unread = active.reduce((n, p) => n + unreadCount(state, p.id, 'admin'), 0)
+  const unread = unreadTotal(state, OWNER_ID)
   const upcoming = state.tasks
     .filter((t) => t.status !== 'completed' && t.status !== 'submitted')
     .sort((a, b) => a.due.localeCompare(b.due))
@@ -238,7 +238,7 @@ export function PersonDetail() {
   const notes = state.notes.filter((n) => n.personId === id)
   const stageDone = stageShare(state, id, person.stage) === 1
   const isLastStage = person.stage === STAGES.length - 1
-  const unread = unreadCount(state, id, 'admin')
+  const unread = unreadFrom(state, OWNER_ID, id)
 
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: 'overview', label: 'Overview' },
@@ -376,7 +376,7 @@ export function PersonDetail() {
         </>
       )}
 
-      {tab === 'messages' && <Chat personId={id} viewer="admin" />}
+      {tab === 'messages' && <Chat me={OWNER_ID} other={id} />}
 
       {tab === 'notes' && (
         <>
@@ -437,15 +437,15 @@ export function AdminMessages() {
           <Avatar name={current.name} />
           <h1 className="text-xl font-bold">{current.name}</h1>
         </div>
-        <Chat personId={current.id} viewer="admin" />
+        <Chat me={OWNER_ID} other={current.id} />
       </>
     )
   }
 
   const rows = people
     .map((p) => {
-      const thread = state.messages.filter((m) => m.personId === p.id)
-      return { person: p, last: thread[thread.length - 1], unread: unreadCount(state, p.id, 'admin') }
+      const thread = threadBetween(state, OWNER_ID, p.id)
+      return { person: p, last: thread[thread.length - 1], unread: unreadFrom(state, OWNER_ID, p.id) }
     })
     .sort((a, b) => (b.last?.at ?? '').localeCompare(a.last?.at ?? ''))
 
@@ -466,7 +466,7 @@ export function AdminMessages() {
                   {last && <span className="shrink-0 text-xs text-muted">{formatWhen(last.at)}</span>}
                 </span>
                 <span className={`block truncate text-sm ${unread ? 'text-ink' : 'text-muted'}`}>
-                  {last ? `${last.from === 'admin' ? 'You: ' : ''}${last.body}` : 'No messages yet'}
+                  {last ? `${last.from === OWNER_ID ? 'You: ' : ''}${last.body}` : 'No messages yet'}
                 </span>
               </span>
               {unread > 0 && <Badge tone="accent">{unread} new</Badge>}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { CalendarDays } from 'lucide-react'
-import { STAGES, formatDue, isOverdue, type Role, type Task } from '../../lib/data'
+import { CalendarDays, FileText, Paperclip, X } from 'lucide-react'
+import { STAGES, formatDue, formatSize, isOverdue, newId, type Attachment, type Role, type Task } from '../../lib/data'
 import { useStore } from '../../lib/store'
 import { Badge, Button, StatusBadge, inputClass } from './ui'
 
@@ -11,6 +11,7 @@ import { Badge, Button, StatusBadge, inputClass } from './ui'
 export function TaskCard({ task, viewer, showPerson = false }: { task: Task; viewer: Role; showPerson?: boolean }) {
   const { state, startTask, submitTask, reviewTask } = useStore()
   const [text, setText] = useState('')
+  const [files, setFiles] = useState<Attachment[]>([])
   const person = state.people.find((p) => p.id === task.personId)
   const late = isOverdue(task)
 
@@ -42,12 +43,17 @@ export function TaskCard({ task, viewer, showPerson = false }: { task: Task; vie
         {task.priority === 'high' && task.status !== 'completed' && <Badge tone="warn">Important</Badge>}
       </div>
 
-      {task.submission && (
+      {(task.submission || !!task.attachments?.length) && (
         <div className="rounded-lg bg-sunken p-3 text-sm">
           <p className="mb-1 text-xs font-semibold tracking-wide text-muted uppercase">
             {viewer === 'participant' ? 'What you handed in' : 'Handed in'}
           </p>
           <p className="break-words whitespace-pre-wrap">{task.submission}</p>
+          {!!task.attachments?.length && (
+            <div className="mt-3">
+              <AttachmentList items={task.attachments} />
+            </div>
+          )}
         </div>
       )}
 
@@ -75,9 +81,10 @@ export function TaskCard({ task, viewer, showPerson = false }: { task: Task; vie
           className="flex flex-col gap-2"
           onSubmit={(e) => {
             e.preventDefault()
-            if (!text.trim()) return
-            submitTask(task.id, text.trim())
+            if (!text.trim() && files.length === 0) return
+            submitTask(task.id, text.trim(), files)
             setText('')
+            setFiles([])
           }}
         >
           <label htmlFor={`work-${task.id}`} className="text-sm font-medium">
@@ -91,8 +98,32 @@ export function TaskCard({ task, viewer, showPerson = false }: { task: Task; vie
             placeholder="Write what you did, or paste a link"
             className={inputClass}
           />
-          <div>
-            <Button small type="submit" disabled={!text.trim()}>
+          {files.length > 0 && (
+            <AttachmentList items={files} onRemove={(id) => setFiles((list) => list.filter((f) => f.id !== id))} />
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <label
+              htmlFor={`files-${task.id}`}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-medium hover:bg-sunken focus-within:outline-2 focus-within:outline-accent"
+            >
+              <Paperclip size={15} />
+              Add pictures or files
+              <input
+                id={`files-${task.id}`}
+                type="file"
+                multiple
+                className="sr-only"
+                onChange={(e) => {
+                  const picked = Array.from(e.target.files ?? []).map<Attachment>((f) => {
+                    const isImage = f.type.startsWith('image/')
+                    return { id: newId(), name: f.name, size: f.size, isImage, url: isImage ? URL.createObjectURL(f) : undefined }
+                  })
+                  setFiles((list) => [...list, ...picked])
+                  e.target.value = ''
+                }}
+              />
+            </label>
+            <Button small type="submit" disabled={!text.trim() && files.length === 0}>
               Hand in
             </Button>
           </div>
@@ -123,5 +154,42 @@ export function TaskCard({ task, viewer, showPerson = false }: { task: Task; vie
         </div>
       )}
     </article>
+  )
+}
+
+/** Pictures show as small previews; other files show as a name and size. */
+function AttachmentList({ items, onRemove }: { items: Attachment[]; onRemove?: (id: string) => void }) {
+  return (
+    <ul className="flex flex-wrap gap-2" aria-label="Attached files">
+      {items.map((a) => (
+        <li
+          key={a.id}
+          className="flex max-w-full items-center gap-2 rounded-lg border border-line bg-surface p-1.5 pr-2.5 text-sm"
+          data-testid="attachment"
+        >
+          {a.isImage && a.url ? (
+            <img src={a.url} alt="" className="h-12 w-12 shrink-0 rounded-md object-cover" />
+          ) : (
+            <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-sunken text-muted">
+              <FileText size={20} />
+            </span>
+          )}
+          <span className="min-w-0">
+            <span className="block max-w-40 truncate font-medium">{a.name}</span>
+            <span className="block text-xs text-muted">{formatSize(a.size)}</span>
+          </span>
+          {onRemove && (
+            <button
+              type="button"
+              onClick={() => onRemove(a.id)}
+              aria-label={`Remove ${a.name}`}
+              className="rounded-md p-1 text-muted hover:bg-sunken hover:text-ink"
+            >
+              <X size={15} />
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
   )
 }

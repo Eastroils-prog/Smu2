@@ -53,16 +53,17 @@ These are the main things the app must do.
 ### For each guest (participant)
 
 1. **Their own home page.** Where they are now, what is due next, and your latest feedback.
-2. **Their tasks.** See them, work on them, hand them in.
-3. **Their chat with you.** One private conversation.
+2. **Their tasks.** See them, work on them, hand them in. They can attach pictures and files to their work.
+3. **Their chats.** A private chat with you, and private chats with other participants.
 4. **Their progress.** The stages they have passed and what comes next.
 5. **Their profile.** Their name, picture, business idea, and goals.
 6. **A "help me" button.** Sends you a request for help.
 
 ### The one rule that matters most
 
-**A guest can only see their own things.** Not another guest's messages, tasks,
-files, or name. And nobody can make themselves the owner. This rule lives in the
+**A guest can only see their own things.** Not another guest's tasks, files,
+progress, or chats they are not part of. Guests can see each other's names, so
+they can message each other, but nothing more. And nobody can make themselves the owner. This rule lives in the
 kitchen, behind a locked door, so nobody can get around it by being clever with
 the dining room.
 
@@ -93,10 +94,10 @@ We build this in four parts. After each part, something real works.
 
 | Part | What we build | Restaurant picture | It is done when… |
 |---|---|---|---|
-| **2a. Doors and locks** | Sign in, invitations, profiles | Real doors, real keys, a guest list | You can invite someone and they can sign in. A stranger cannot get in. |
+| **2a. Doors and locks** | Sign in with a username and password, invitations, profiles | Real doors, real keys, a guest list | You can invite someone and they can sign in. A stranger cannot get in. |
 | **2b. Your office** | Your dashboard, the people list, secret notes | The owner's desk and the reservation book | You can see and sort all your people. Guests cannot reach your notes. |
-| **2c. Private chat** | Live messages and file sharing | A private line between you and each table | Two people chat live. A third person sees nothing. |
-| **2d. Tasks and progress** | Tasks, handing in work, approving, the progress bar | Orders go to the kitchen and come back checked | The whole story below works from start to finish. |
+| **2c. Private chat** | Live messages between you and each person, and between participants | A private line between any two tables | Two people chat live. A third person sees nothing. |
+| **2d. Tasks and progress** | Tasks, handing in work with pictures and files, approving, the progress bar | Orders go to the kitchen and come back checked | The whole story below works from start to finish. |
 
 **The story that must work at the end of Step 2:**
 
@@ -152,7 +153,9 @@ have **not** tested yet. I will never say "it works" unless a test showed it.
 - The plan for the kitchen is drawn (how information is stored and who may see what).
 - That plan was tried out on a practice kitchen. 38 lock checks were run and all
   passed. For example: "Can guest A read guest B's messages?" The answer was no.
-- **Not done:** everything you can see or click. No screens exist yet.
+- **Step 1, the food stand, is built.** You can click through every screen with
+  made-up people. It was checked on phone and computer sizes.
+- **Not done:** the real kitchen and the real locks. Nothing is saved yet.
 
 ---
 

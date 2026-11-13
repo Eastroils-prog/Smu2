@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Check, CircleCheck, Circle, LifeBuoy } from 'lucide-react'
-import { STAGES, formatDate, formatDue, isOverdue, progressOf, type TaskStatus } from '../../lib/data'
+import { ArrowLeft, Briefcase, Check, CircleCheck, Circle, LifeBuoy } from 'lucide-react'
+import {
+  OWNER_ID, STAGES, formatDate, formatDue, formatWhen, isOverdue, progressOf, threadBetween, unreadFrom, type TaskStatus,
+} from '../../lib/data'
 import { useStore } from '../../lib/store'
 import { Chat } from '../shared/Chat'
 import { TaskCard } from '../shared/TaskCard'
@@ -149,12 +151,77 @@ export function MyTasks() {
 // ---------- Messages ----------
 
 export function MyMessages() {
-  const { me } = useMe()
+  const { state, me } = useMe()
+  const [openId, setOpenId] = useState<string | null>(null)
+
+  // The owner comes first, then the other people in the programme.
+  const contacts = [
+    { id: OWNER_ID, name: 'The owner', hint: 'Programme owner' },
+    ...state.people
+      .filter((p) => p.id !== me.id && p.status !== 'invited')
+      .map((p) => ({ id: p.id, name: p.name, hint: 'Participant' })),
+  ]
+  const open = contacts.find((c) => c.id === openId)
+
+  if (open) {
+    return (
+      <>
+        <button onClick={() => setOpenId(null)} className="inline-flex items-center gap-1.5 self-start text-sm font-medium text-accent-strong">
+          <ArrowLeft size={16} />
+          All conversations
+        </button>
+        <div className="flex items-center gap-3">
+          <ContactIcon id={open.id} name={open.name} />
+          <div>
+            <h1 className="text-xl font-bold">{open.name}</h1>
+            <p className="text-sm text-muted">Only the two of you can read this.</p>
+          </div>
+        </div>
+        <Chat me={me.id} other={open.id} />
+      </>
+    )
+  }
+
   return (
     <>
-      <PageTitle title="Messages" subtitle="Your private conversation with the owner. Nobody else can read it." />
-      <Chat personId={me.id} viewer="participant" />
+      <PageTitle title="Messages" subtitle="Talk to the owner or to other people in the programme. Each conversation is private." />
+      <ul className="flex flex-col gap-2">
+        {contacts.map((c) => {
+          const thread = threadBetween(state, me.id, c.id)
+          const last = thread[thread.length - 1]
+          const unread = unreadFrom(state, me.id, c.id)
+          return (
+            <li key={c.id}>
+              <button
+                onClick={() => setOpenId(c.id)}
+                className="flex w-full items-center gap-3 rounded-2xl border border-line bg-surface p-4 text-left transition-colors hover:border-accent"
+              >
+                <ContactIcon id={c.id} name={c.name} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline justify-between gap-2">
+                    <span className={`truncate ${unread ? 'font-bold' : 'font-semibold'}`}>{c.name}</span>
+                    {last && <span className="shrink-0 text-xs text-muted">{formatWhen(last.at)}</span>}
+                  </span>
+                  <span className={`block truncate text-sm ${unread ? 'text-ink' : 'text-muted'}`}>
+                    {last ? `${last.from === me.id ? 'You: ' : ''}${last.body}` : `${c.hint} · no messages yet`}
+                  </span>
+                </span>
+                {unread > 0 && <Badge tone="accent">{unread} new</Badge>}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
     </>
+  )
+}
+
+function ContactIcon({ id, name }: { id: string; name: string }) {
+  if (id !== OWNER_ID) return <Avatar name={name} />
+  return (
+    <span aria-hidden="true" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent">
+      <Briefcase size={17} />
+    </span>
   )
 }
 

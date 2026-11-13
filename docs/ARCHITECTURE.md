@@ -18,6 +18,20 @@ There are no companies, teams or organisations in the data model — only people
 
 ---
 
+## 0. Changes requested after the sample version
+
+The owner reviewed the click-through sample and asked for three changes. The
+sample already shows them. **Sections 2–4 and `schema.sql` below still describe
+the earlier design and must be revised before Phase 1 and Phase 3 start.**
+
+| Request | What it changes in the design |
+|---|---|
+| Participants can message other participants | `conversations` is no longer "exactly one per participant". It becomes a conversation between any two people, with RLS by membership. Participants need to read a minimal directory of other participants (name and avatar only). Open decision: whether the administrator can read participant-to-participant conversations (the sample assumes not). |
+| Pictures and files attached to handed-in work | Already covered by `attachments` on `task_submissions`; needs upload UI, size and type limits, and storage policies tested in Phase 4. |
+| Sign in with a username and password | Supabase Auth signs in by e-mail. Either keep e-mail as the sign-in name, or add a unique `username` to `profiles` and resolve it to an e-mail server-side. Open decision. |
+
+---
+
 ## 1. Application architecture
 
 ```mermaid

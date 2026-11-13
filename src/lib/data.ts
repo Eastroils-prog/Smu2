@@ -23,6 +23,16 @@ export interface Person {
   helpRequest?: string
 }
 
+/** A file or picture attached to handed-in work. */
+export interface Attachment {
+  id: string
+  name: string
+  size: number
+  isImage: boolean
+  /** Lets the browser show the picture. Only present for images. */
+  url?: string
+}
+
 export interface Task {
   id: string
   personId: string
@@ -33,6 +43,7 @@ export interface Task {
   priority: Priority
   status: TaskStatus
   submission?: string
+  attachments?: Attachment[]
   feedback?: string
 }
 
@@ -44,10 +55,11 @@ export interface Milestone {
   achieved: boolean
 }
 
+/** A message between two people. `from` and `to` are person ids, or OWNER_ID for the owner. */
 export interface Message {
   id: string
-  personId: string
-  from: Role
+  from: string
+  to: string
   body: string
   at: string
   read: boolean
@@ -75,6 +87,15 @@ export const STAGES: Stage[] = [
   { name: 'Product development', description: 'Build the first version of the product or service.' },
   { name: 'Marketing and validation', description: 'Test with real customers and refine the offer.' },
   { name: 'Launch preparation', description: 'Legal, operational and go-to-market readiness.' },
+]
+
+/** The id that stands for the owner in messages. */
+export const OWNER_ID = 'admin'
+
+/** Sign-in details for the sample version. They are shown on the sign-in page; they protect nothing. */
+export const DEMO_ACCOUNTS: { username: string; password: string; role: Role; label: string }[] = [
+  { username: 'owner', password: 'demo1234', role: 'admin', label: 'The owner' },
+  { username: 'maya', password: 'demo1234', role: 'participant', label: 'Maya, a participant' },
 ]
 
 /** The participant you become when you choose "participant" on the sign-in page. */
@@ -248,15 +269,19 @@ export function seed(): DemoState {
   ]
 
   const messages: Message[] = [
-    { id: 'c1', personId: 'p1', from: 'admin', read: true, at: daysFromNow(-2, 14, 10), body: 'Hi Maya, how is the one-page plan going?' },
-    { id: 'c2', personId: 'p1', from: 'participant', read: true, at: daysFromNow(-2, 15, 2), body: 'Nearly done. I am not sure about the delivery cost though.' },
-    { id: 'c3', personId: 'p1', from: 'admin', read: true, at: daysFromNow(-2, 15, 20), body: 'Count your own time too. Even €5 an hour makes the numbers more honest.' },
-    { id: 'c4', personId: 'p1', from: 'participant', read: false, at: daysFromNow(0, 9, 12), body: 'I handed in the plan this morning. Could you take a look?' },
-    { id: 'c5', personId: 'p2', from: 'admin', read: false, at: daysFromNow(-6, 10, 0), body: 'Hi Tomás, the competitor list was due. Do you need a hand?' },
-    { id: 'c6', personId: 'p3', from: 'participant', read: false, at: daysFromNow(-1, 18, 5), body: 'I will record the lesson again on Thursday. Is the weekend OK as a new deadline?' },
-    { id: 'c7', personId: 'p4', from: 'admin', read: true, at: daysFromNow(-11, 9, 30), body: 'Welcome, Daniel! Start with the first task when you are ready.' },
-    { id: 'c8', personId: 'p5', from: 'participant', read: true, at: daysFromNow(-3, 12, 45), body: 'Trial is running. Eleven customers so far!' },
-    { id: 'c9', personId: 'p5', from: 'admin', read: true, at: daysFromNow(-3, 13, 15), body: 'That is brilliant. Ask each of them one question: what would make you cancel?' },
+    { id: 'c1', from: 'admin', to: 'p1', read: true, at: daysFromNow(-2, 14, 10), body: 'Hi Maya, how is the one-page plan going?' },
+    { id: 'c2', from: 'p1', to: 'admin', read: true, at: daysFromNow(-2, 15, 2), body: 'Nearly done. I am not sure about the delivery cost though.' },
+    { id: 'c3', from: 'admin', to: 'p1', read: true, at: daysFromNow(-2, 15, 20), body: 'Count your own time too. Even €5 an hour makes the numbers more honest.' },
+    { id: 'c4', from: 'p1', to: 'admin', read: false, at: daysFromNow(0, 9, 12), body: 'I handed in the plan this morning. Could you take a look?' },
+    { id: 'c5', from: 'admin', to: 'p2', read: false, at: daysFromNow(-6, 10, 0), body: 'Hi Tomás, the competitor list was due. Do you need a hand?' },
+    { id: 'c6', from: 'p3', to: 'admin', read: false, at: daysFromNow(-1, 18, 5), body: 'I will record the lesson again on Thursday. Is the weekend OK as a new deadline?' },
+    { id: 'c7', from: 'admin', to: 'p4', read: true, at: daysFromNow(-11, 9, 30), body: 'Welcome, Daniel! Start with the first task when you are ready.' },
+    { id: 'c8', from: 'p5', to: 'admin', read: true, at: daysFromNow(-3, 12, 45), body: 'Trial is running. Eleven customers so far!' },
+    { id: 'c9', from: 'admin', to: 'p5', read: true, at: daysFromNow(-3, 13, 15), body: 'That is brilliant. Ask each of them one question: what would make you cancel?' },
+    // Participants can also talk to each other.
+    { id: 'c10', from: 'p5', to: 'p1', read: true, at: daysFromNow(-5, 17, 20), body: 'Hi Maya! How did you find your shared kitchen? I am looking for one too.' },
+    { id: 'c11', from: 'p1', to: 'p5', read: true, at: daysFromNow(-5, 18, 2), body: 'Through the community centre. I can send you the contact.' },
+    { id: 'c12', from: 'p3', to: 'p1', read: false, at: daysFromNow(-1, 20, 15), body: 'Would your bread customers like a flyer for my maths lessons? Happy to swap!' },
   ]
 
   const notes: Note[] = [
@@ -300,8 +325,25 @@ export function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
 }
 
-export function unreadCount(state: DemoState, personId: string, viewer: Role): number {
-  return state.messages.filter((m) => m.personId === personId && m.from !== viewer && !m.read).length
+/** The conversation between two people, oldest first. */
+export function threadBetween(state: DemoState, a: string, b: string): Message[] {
+  return state.messages.filter((m) => (m.from === a && m.to === b) || (m.from === b && m.to === a))
+}
+
+/** How many messages `other` sent to `me` that `me` has not opened yet. */
+export function unreadFrom(state: DemoState, me: string, other: string): number {
+  return state.messages.filter((m) => m.to === me && m.from === other && !m.read).length
+}
+
+/** All unopened messages waiting for `me`. */
+export function unreadTotal(state: DemoState, me: string): number {
+  return state.messages.filter((m) => m.to === me && !m.read).length
+}
+
+export function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 export interface Attention {
@@ -320,7 +362,7 @@ export function attentionFor(state: DemoState, person: Person): Attention[] {
   if (quiet >= 7) out.push({ label: `Quiet for ${quiet} days`, tone: 'warn' })
   const toCheck = state.tasks.filter((t) => t.personId === person.id && t.status === 'submitted').length
   if (toCheck) out.push({ label: 'Work to check', tone: 'info' })
-  if (unreadCount(state, person.id, 'admin')) out.push({ label: 'Unread message', tone: 'info' })
+  if (unreadFrom(state, OWNER_ID, person.id)) out.push({ label: 'Unread message', tone: 'info' })
   return out
 }
 

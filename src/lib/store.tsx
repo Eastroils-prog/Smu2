@@ -4,6 +4,7 @@ import {
   STAGES,
   newId,
   seed,
+  type Attachment,
   type DemoState,
   type Priority,
   type Role,
@@ -27,11 +28,12 @@ interface Store {
   meId: string
   signIn: (role: Role) => void
   signOut: () => void
-  sendMessage: (personId: string, from: Role, body: string) => void
-  markRead: (personId: string, viewer: Role) => void
+  sendMessage: (from: string, to: string, body: string) => void
+  /** `me` has opened the conversation with `other`. */
+  markRead: (me: string, other: string) => void
   createTask: (task: NewTask) => void
   startTask: (taskId: string) => void
-  submitTask: (taskId: string, text: string) => void
+  submitTask: (taskId: string, text: string, attachments: Attachment[]) => void
   reviewTask: (taskId: string, approve: boolean, feedback: string) => void
   toggleMilestone: (milestoneId: string) => void
   advanceStage: (personId: string) => void
@@ -62,24 +64,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       signIn: setRole,
       signOut: () => setRole(null),
 
-      sendMessage: (personId, from, body) =>
-        setState((s) => {
-          const next = {
-            ...s,
-            messages: [...s.messages, { id: newId(), personId, from, body, at: now(), read: false }],
-          }
-          return from === 'participant' ? touch(next, personId) : next
-        }),
-
-      markRead: (personId, viewer) =>
+      sendMessage: (from, to, body) =>
         setState((s) =>
-          s.messages.some((m) => m.personId === personId && m.from !== viewer && !m.read)
-            ? {
-                ...s,
-                messages: s.messages.map((m) =>
-                  m.personId === personId && m.from !== viewer ? { ...m, read: true } : m,
-                ),
-              }
+          touch({ ...s, messages: [...s.messages, { id: newId(), from, to, body, at: now(), read: false }] }, from),
+        ),
+
+      markRead: (me, other) =>
+        setState((s) =>
+          s.messages.some((m) => m.to === me && m.from === other && !m.read)
+            ? { ...s, messages: s.messages.map((m) => (m.to === me && m.from === other ? { ...m, read: true } : m)) }
             : s,
         ),
 
@@ -101,13 +94,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, status: 'in_progress' as const } : t)),
         })),
 
-      submitTask: (taskId, text) =>
+      submitTask: (taskId, text, attachments) =>
         setState((s) => {
           const task = s.tasks.find((t) => t.id === taskId)
           const next = {
             ...s,
             tasks: s.tasks.map((t) =>
-              t.id === taskId ? { ...t, status: 'submitted' as const, submission: text } : t,
+              t.id === taskId ? { ...t, status: 'submitted' as const, submission: text, attachments } : t,
             ),
           }
           return task ? touch(next, task.personId) : next

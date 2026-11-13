@@ -1,15 +1,29 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Briefcase, Sprout, UserRound } from 'lucide-react'
-import type { Role } from '../../lib/data'
+import { Eye, EyeOff, LogIn, Sprout } from 'lucide-react'
+import { DEMO_ACCOUNTS } from '../../lib/data'
 import { useStore } from '../../lib/store'
+import { Button, Field, inputClass } from '../shared/ui'
 
 export function SignIn() {
   const { signIn } = useStore()
   const navigate = useNavigate()
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState('')
 
-  const enter = (role: Role) => {
-    signIn(role)
-    navigate(role === 'admin' ? '/admin' : '/app')
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const account = DEMO_ACCOUNTS.find(
+      (a) => a.username === username.trim().toLowerCase() && a.password === password,
+    )
+    if (!account) {
+      setError('That username and password do not match. Use one of the sample accounts below.')
+      return
+    }
+    signIn(account.role)
+    navigate(account.role === 'admin' ? '/admin' : '/app')
   }
 
   return (
@@ -25,48 +39,77 @@ export function SignIn() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-line bg-surface p-5">
-          <h2 className="text-lg font-semibold">Choose who to be</h2>
-          <p className="mt-1 text-sm text-muted">
-            This is a sample version, so there is no password yet. Pick a side to look around. You can switch at any time.
-          </p>
-          <div className="mt-4 flex flex-col gap-3">
-            <RoleButton
-              onClick={() => enter('admin')}
-              icon={<Briefcase size={22} />}
-              title="Enter as the owner"
-              text="See all your people, chat, give tasks and check work."
+        <form onSubmit={submit} className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5" noValidate>
+          <h2 className="text-lg font-semibold">Sign in</h2>
+          <Field label="Username" htmlFor="signin-username">
+            <input
+              id="signin-username"
+              value={username}
+              onChange={(e) => { setUsername(e.target.value); setError('') }}
+              autoCapitalize="none"
+              autoCorrect="off"
+              autoComplete="username"
+              className={inputClass}
             />
-            <RoleButton
-              onClick={() => enter('participant')}
-              icon={<UserRound size={22} />}
-              title="Enter as a participant"
-              text="See what Maya, one of your people, would see."
-            />
-          </div>
-        </div>
+          </Field>
+          <Field label="Password" htmlFor="signin-password">
+            <div className="relative">
+              <input
+                id="signin-password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => { setPassword(e.target.value); setError('') }}
+                autoComplete="current-password"
+                className={`${inputClass} pr-11`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted hover:text-ink"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </Field>
+          {error && (
+            <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+              {error}
+            </p>
+          )}
+          <Button type="submit">
+            <LogIn size={17} />
+            Sign in
+          </Button>
+        </form>
 
-        <p className="rounded-xl bg-warn-soft px-4 py-3 text-sm text-warn">
-          <strong>Sample version.</strong> Everyone here is made up. Nothing you type is saved, and it resets when you reload the page.
-        </p>
+        <div className="rounded-2xl bg-warn-soft p-4 text-warn">
+          <p className="text-sm">
+            <strong>Sample version.</strong> Everyone here is made up and nothing is saved. Use one of these sample accounts:
+          </p>
+          <ul className="mt-3 flex flex-col gap-2">
+            {DEMO_ACCOUNTS.map((a) => (
+              <li key={a.username} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2 text-ink">
+                <span className="min-w-0 text-sm">
+                  <span className="block font-semibold">{a.label}</span>
+                  <span className="block text-muted">
+                    Username <code className="font-semibold text-ink">{a.username}</code> · Password{' '}
+                    <code className="font-semibold text-ink">{a.password}</code>
+                  </span>
+                </span>
+                <Button
+                  small
+                  variant="secondary"
+                  type="button"
+                  onClick={() => { setUsername(a.username); setPassword(a.password); setError('') }}
+                >
+                  Fill in
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </div>
-  )
-}
-
-function RoleButton(props: { onClick: () => void; icon: React.ReactNode; title: string; text: string }) {
-  return (
-    <button
-      onClick={props.onClick}
-      className="flex items-center gap-4 rounded-xl border border-line bg-surface p-4 text-left transition-colors hover:border-accent hover:bg-accent-soft"
-    >
-      <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-strong">
-        {props.icon}
-      </span>
-      <span className="min-w-0">
-        <span className="block font-semibold">{props.title}</span>
-        <span className="block text-sm text-muted">{props.text}</span>
-      </span>
-    </button>
   )
 }

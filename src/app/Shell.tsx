@@ -3,7 +3,7 @@ import { NavLink, Navigate, Outlet, useNavigate } from 'react-router-dom'
 import {
   ArrowLeftRight, CheckSquare, LayoutDashboard, LogOut, MessageCircle, Sprout, TrendingUp, User, Users,
 } from 'lucide-react'
-import { unreadCount, type Role } from '../lib/data'
+import { OWNER_ID, unreadTotal, type Role } from '../lib/data'
 import { useStore } from '../lib/store'
 
 interface NavItem {
@@ -23,7 +23,7 @@ export function Shell({ forRole }: { forRole: Role }) {
   if (role !== forRole) return <Navigate to={role === 'admin' ? '/admin' : '/app'} replace />
 
   const me = state.people.find((p) => p.id === meId)
-  const adminUnread = state.people.reduce((n, p) => n + unreadCount(state, p.id, 'admin'), 0)
+  const adminUnread = unreadTotal(state, OWNER_ID)
   const toCheck = state.tasks.filter((t) => t.status === 'submitted').length
 
   const items: NavItem[] =
@@ -37,7 +37,7 @@ export function Shell({ forRole }: { forRole: Role }) {
       : [
           { to: '/app', label: 'Home', icon: <LayoutDashboard size={19} />, end: true },
           { to: '/app/tasks', label: 'Tasks', icon: <CheckSquare size={19} /> },
-          { to: '/app/messages', label: 'Messages', icon: <MessageCircle size={19} />, badge: unreadCount(state, meId, 'participant') },
+          { to: '/app/messages', label: 'Messages', icon: <MessageCircle size={19} />, badge: unreadTotal(state, meId) },
           { to: '/app/progress', label: 'Progress', icon: <TrendingUp size={19} /> },
           { to: '/app/profile', label: 'Profile', icon: <User size={19} /> },
         ]
