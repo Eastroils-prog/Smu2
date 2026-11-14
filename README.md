@@ -13,6 +13,10 @@ and follow-ups.
   changes), verified progress, and private messages between any two people:
   **built and tested against a local Supabase stack; database part applied to
   the hosted project**.
+- Money tracking (each participant's monthly money in and out, private to
+  them and the owner) and shared spreadsheets (visible to everyone once the
+  owner approves): **built and tested locally; database part applied to the
+  hosted project**.
 - Not built yet: owner dashboard, private notes, milestones, reminders,
   calendar, analytics. Those exist only in the sample. Messages refresh every
   few seconds rather than instantly.
@@ -50,6 +54,6 @@ Create the one administrator (once):
 Tests:
 
 ```
-npm run test:db                   # 79 database-level checks (pgTAP)
-npm run build && npm run test:real  # 47 end-to-end checks; WIPES local accounts
+npm run test:db                   # 106 database-level checks (pgTAP)
+npm run build && npm run test:real  # 59 end-to-end checks; WIPES local accounts
 ```

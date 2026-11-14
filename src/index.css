@@ -18,6 +18,8 @@
   --danger-soft: #fde4e1;
   --info: #1f5f99;
   --info-soft: #dfecf9;
+  --series-in: #2a78d6;
+  --series-out: #eb6834;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -37,6 +39,8 @@
     --danger-soft: #45201d;
     --info: #8ec1f2;
     --info-soft: #1a3048;
+    --series-in: #3987e5;
+    --series-out: #d95926;
     color-scheme: dark;
   }
 }
@@ -57,6 +61,8 @@
   --danger-soft: #45201d;
   --info: #8ec1f2;
   --info-soft: #1a3048;
+  --series-in: #3987e5;
+  --series-out: #d95926;
   color-scheme: dark;
 }
 
@@ -77,6 +83,8 @@
   --color-danger-soft: var(--danger-soft);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
+  --color-series-in: var(--series-in);
+  --color-series-out: var(--series-out);
   --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
 }

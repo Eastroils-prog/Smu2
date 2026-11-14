@@ -65,7 +65,7 @@ async function main() {
   }
 
   // ---- Clean start: no accounts, no mail, one owner created the documented way ----
-  sql('delete from public.messages; delete from public.tasks; delete from public.participant_invitations; delete from auth.users; delete from private.sign_in_attempts;')
+  sql('delete from public.shared_files; delete from public.finance_entries; delete from public.messages; delete from public.tasks; delete from public.participant_invitations; delete from auth.users; delete from private.sign_in_attempts;')
   await fetch(`${MAIL}/api/v1/messages`, { method: 'DELETE' })
 
   const created = await api('/auth/v1/admin/users', {
@@ -400,8 +400,113 @@ async function main() {
     await lee.getByText('You have no tasks yet').waitFor()
     ok("the owner's screen shows nothing of the Sam–Lee conversation, and Lee sees none of Sam's tasks")
 
+    // ---- Money ----
+    section('4. Money and shared spreadsheets, with the real back end')
+    step = 0
+    const nav = (page, label) => page.getByRole('navigation').getByRole('link', { name: new RegExp('^' + label) })
+    await nav(sam, 'Money').click()
+    await sam.getByText('No numbers yet').waitFor()
+    const addMonth = async (monthName, inAmount, outAmount, note) => {
+      await sam.getByLabel('Month', { exact: true }).selectOption({ label: monthName })
+      await sam.getByLabel('Money in (€)').fill(inAmount)
+      await sam.getByLabel('Money out (€)').fill(outAmount)
+      await sam.getByLabel('Note (optional)').fill(note)
+      await sam.getByRole('button', { name: /Save this month|Save changes/ }).click()
+      await sam.getByRole('status').getByText(`Saved ${monthName}`).waitFor()
+    }
+    // Two months that have certainly started: this month and January of this year (or last year in January).
+    const today = new Date()
+    const thisMonth = today.toLocaleString('en', { month: 'long' })
+    if (today.getMonth() === 0) await sam.getByLabel('Year').selectOption(String(today.getFullYear() - 1))
+    const earlier = today.getMonth() === 0 ? 'December' : 'January'
+    await addMonth(earlier, '400', '250,50', 'First customers')
+    if (today.getMonth() === 0) await sam.getByLabel('Year').selectOption(String(today.getFullYear()))
+    await addMonth(thisMonth, '900', '300', 'More walks')
+    assert.equal(await sam.getByTestId('money-row').count(), 2)
+    await sam.getByText('€749.50').waitFor()
+    await sam.getByRole('button', { name: new RegExp(`^${earlier}.*money in`) }).hover()
+    await sam.locator('figcaption').getByText('left over').waitFor()
+    await sam.getByLabel('Money in (€)').fill('abc')
+    await sam.getByRole('button', { name: /Save/ }).click()
+    await sam.getByRole('alert').getByText('Type amounts as numbers').waitFor()
+    await sam.reload()
+    await sam.getByText('€749.50').waitFor()
+    await sam.getByLabel('Money in (€)').and(sam.locator('[value="900"]')).waitFor()
+    assert.equal(await sam.getByLabel('Money out (€)').inputValue(), '300')
+    await snap(sam, 'participant-money')
+    ok('Sam adds two months of money numbers; the totals are right (1300 in, 550.50 out, 749.50 left) and survive a reload')
+
+    await nav(owner, 'People').click()
+    await owner.getByRole('link', { name: /Sam Baker/ }).click()
+    await owner.getByText('€749.50').waitFor()
+    assert.equal(await owner.getByTestId('money-row').count(), 2)
+    assert.equal(await owner.getByRole('button', { name: /^Change / }).count(), 0)
+    await snap(owner, 'owner-person-money')
+    ok("the owner sees Sam's money numbers on Sam's page, and has no way to change them")
+
+    await nav(lee, 'Money').click()
+    await lee.getByText('No numbers yet').waitFor()
+    ok("Lee's money page is empty: Lee sees none of Sam's numbers")
+
+    // ---- Shared spreadsheets ----
+    const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    await nav(sam, 'Files').click()
+    await sam.locator('#shared-file').setInputFiles({ name: 'holiday.png', mimeType: 'image/png', buffer: PNG })
+    await sam.getByRole('alert').getByText('Only spreadsheet files').waitFor()
+    await sam.locator('#shared-file').setInputFiles({ name: 'Price list 2026.xlsx', mimeType: XLSX_TYPE, buffer: Buffer.from('PK sample spreadsheet bytes') })
+    await sam.getByTestId('chosen-file').getByText('Price list 2026.xlsx').waitFor()
+    assert.equal(await sam.getByLabel('Name to show in the list').inputValue(), 'Price list 2026')
+    await sam.getByRole('button', { name: 'Send for approval' }).click()
+    await sam.getByRole('status').getByText('Sent to the owner').waitFor()
+    await sam.getByTestId('shared-file').filter({ hasText: 'Price list 2026' }).getByText('Waiting for approval').waitFor()
+    ok('Sam cannot share a picture, then sends a spreadsheet for approval')
+
+    await nav(lee, 'Files').click()
+    await lee.getByText('No shared files yet').waitFor()
+    assert.equal(await lee.getByTestId('shared-file').count(), 0)
+    ok('before approval, Lee cannot see the spreadsheet')
+
+    await owner.reload()
+    await nav(owner, 'Files').getByText('1').waitFor()
+    await nav(owner, 'Files').click()
+    const waiting = owner.getByTestId('shared-file').filter({ hasText: 'Price list 2026' })
+    await waiting.getByText('Sam Baker').waitFor()
+    await snap(owner, 'owner-files-pending')
+    const [ownerDownload] = await Promise.all([owner.waitForEvent('download'), waiting.getByRole('link', { name: 'Download' }).click()])
+    assert.equal(ownerDownload.suggestedFilename(), 'Price list 2026.xlsx')
+    await waiting.getByLabel(/Note for the person/).fill('Thanks, very useful.')
+    await waiting.getByRole('button', { name: 'Approve' }).click()
+    await owner.getByRole('heading', { name: 'Waiting for your approval' }).waitFor({ state: 'detached' })
+    ok('the owner sees it waiting, downloads it to look inside, and approves it')
+
+    await lee.reload()
+    const leeFile = lee.getByTestId('shared-file').filter({ hasText: 'Price list 2026' })
+    await leeFile.getByText('Sam Baker').waitFor()
+    const [leeDownload] = await Promise.all([lee.waitForEvent('download'), leeFile.getByRole('link', { name: 'Download' }).click()])
+    assert.equal(leeDownload.suggestedFilename(), 'Price list 2026.xlsx')
+    const fs = require('node:fs')
+    assert.equal(fs.readFileSync(await leeDownload.path(), 'utf8'), 'PK sample spreadsheet bytes')
+    await snap(lee, 'participant-files')
+    ok('after approval, Lee sees the spreadsheet and downloads the very same file')
+
+    await owner.locator('#shared-file').setInputFiles({ name: 'budget-template.csv', mimeType: 'text/csv', buffer: Buffer.from('month,in,out\n') })
+    await owner.getByRole('button', { name: 'Share with everyone' }).click()
+    await owner.getByRole('status').getByText('Shared with everyone').waitFor()
+    await sam.reload()
+    await sam.getByTestId('shared-file').filter({ hasText: 'budget-template' }).waitFor()
+    ok("the owner's own spreadsheet is shared with everyone straight away")
+
+    const shared = owner.getByTestId('shared-file').filter({ hasText: 'Price list 2026' })
+    await shared.getByRole('button', { name: 'Stop sharing' }).click()
+    await shared.getByRole('button', { name: 'Yes, stop sharing' }).click()
+    await owner.getByRole('heading', { name: 'Not shared' }).waitFor()
+    await lee.reload()
+    await lee.getByTestId('shared-file').filter({ hasText: 'budget-template' }).waitFor()
+    assert.equal(await lee.getByTestId('shared-file').filter({ hasText: 'Price list 2026' }).count(), 0)
+    ok('when the owner stops sharing a file, it disappears for everyone else')
+
     // ---- Security: try every door, straight at the back end ----
-    section('4. Security (talking to the back end directly, skipping the screens)')
+    section('5. Security (talking to the back end directly, skipping the screens)')
     step = 0
     const samToken = (await signInApi('sam.b', SAM_NEW_PASSWORD)).data.access_token
     const ownerToken = (await signInApi('owner', OWNER_PASSWORD)).data.access_token
@@ -562,6 +667,44 @@ async function main() {
     assert.deepEqual(Object.keys(directory[0]).sort(), ['full_name', 'id', 'is_owner'])
     assert.ok(!(await rpcCall('directory', ANON, {})).ok)
     ok('participants can see each other\'s names and nothing else (no e-mail, no username)')
+
+    // ---- Money and shared spreadsheets ----
+    assert.deepEqual((await api('/rest/v1/finance_entries?select=id', { token: leeToken })).data, [])
+    assert.equal((await api('/rest/v1/finance_entries?select=id', { token: samToken })).data.length, 2)
+    assert.ok(!(await api('/rest/v1/finance_entries?select=id')).ok)
+    await api('/rest/v1/finance_entries?money_in=gte.0', { method: 'PATCH', token: leeToken, body: { money_in: 1 } })
+    await api('/rest/v1/finance_entries?money_in=gte.0', { method: 'PATCH', token: ownerToken, body: { money_in: 1 } })
+    await api('/rest/v1/finance_entries?money_in=gte.0', { method: 'DELETE', token: leeToken })
+    assert.ok(!(await api('/rest/v1/finance_entries', { method: 'POST', token: leeToken, body: { participant_id: samId, month: '2026-03-01', money_in: 5 } })).ok)
+    assert.equal(sql('select sum(money_in) || \'/\' || count(*) from public.finance_entries'), '1300.00/2')
+    ok("Sam's money numbers: Lee cannot read, change, delete or add to them; the owner can read but not change them")
+
+    const hiddenFile = sql("select storage_path from public.shared_files where status = 'rejected' limit 1")
+    const openFile = sql("select storage_path from public.shared_files where status = 'approved' limit 1")
+    const getShared = (path, token) => fetch(`${API}/storage/v1/object/authenticated/shared/${path}`, { headers: { apikey: ANON, Authorization: `Bearer ${token}` } })
+    assert.equal((await getShared(openFile, leeToken)).status, 200)
+    assert.ok((await getShared(openFile, ANON)).status >= 400)
+    assert.equal((await getShared(hiddenFile, samToken)).status, 200)
+    assert.equal((await getShared(hiddenFile, ownerToken)).status, 200)
+    assert.ok((await getShared(hiddenFile, leeToken)).status >= 400)
+    assert.deepEqual((await api('/rest/v1/shared_files?select=title', { token: leeToken })).data.map((f) => f.title), ['budget-template'])
+    ok('a file that is not approved opens only for its uploader and the owner; an approved one opens for members but not for visitors')
+
+    const putShared = (token, path, type) => fetch(`${API}/storage/v1/object/shared/${path}`, {
+      method: 'POST', headers: { apikey: ANON, Authorization: `Bearer ${token}`, 'Content-Type': type }, body: 'x',
+    })
+    assert.ok((await putShared(leeToken, `${leeId}/virus.exe`, 'application/octet-stream')).status >= 400)
+    assert.ok((await putShared(leeToken, `${leeId}/page.html`, 'text/html')).status >= 400)
+    assert.ok((await putShared(leeToken, `${leeId}/fake.xlsx`, 'text/html')).status >= 400)
+    assert.ok((await putShared(leeToken, `${samId}/planted.csv`, 'text/csv')).status >= 400)
+    assert.equal((await putShared(leeToken, `${leeId}/mine.csv`, 'text/csv')).status, 200)
+    const hiddenId = sql("select id from public.shared_files where status = 'rejected' limit 1")
+    assert.ok(!(await rpcCall('review_shared_file', leeToken, { p_id: hiddenId, p_approve: true })).ok)
+    assert.ok(!(await rpcCall('review_shared_file', samToken, { p_id: hiddenId, p_approve: true })).ok)
+    assert.ok(!(await api(`/rest/v1/shared_files?id=eq.${hiddenId}`, { method: 'PATCH', token: samToken, body: { status: 'approved' } })).ok)
+    assert.ok(!(await rpcCall('share_file', leeToken, { p_path: hiddenFile, p_title: 'Mine now', p_file_name: 'x.xlsx' })).ok)
+    assert.equal(sql(`select status from public.shared_files where id = '${hiddenId}'`), 'rejected')
+    ok('only spreadsheets can be uploaded, only into your own folder, and nobody but the owner can approve a file')
 
     const bundle = execFileSync('sh', ['-c', 'cat dist/assets/*.js'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
     assert.ok(!bundle.includes(SERVICE) && !bundle.includes('service_role'))

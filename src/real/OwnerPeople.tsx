@@ -9,6 +9,7 @@ import { callAsMe } from './auth'
 import { progressOf, usePeople, useStages, useSubmissions, useTasks } from './data'
 import { StageProgress } from './Home'
 import { GiveTaskModal, TaskCard } from './Tasks'
+import { PersonMoney } from './Money'
 
 // ---------- Data ----------
 
@@ -372,6 +373,8 @@ export function OwnerPerson() {
             .map((t) => <TaskCard key={t.id} task={t} submissions={submissions.data ?? []} stages={stages.data ?? []} />)
         )}
       </section>
+
+      <PersonMoney personId={id} />
 
       <Card>
         <SectionTitle>Stage</SectionTitle>
