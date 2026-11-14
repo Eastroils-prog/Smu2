@@ -65,7 +65,7 @@ async function main() {
   }
 
   // ---- Clean start: no accounts, no mail, one owner created the documented way ----
-  sql('delete from public.shared_files; delete from public.finance_entries; delete from public.messages; delete from public.tasks; delete from public.participant_invitations; delete from auth.users; delete from private.sign_in_attempts;')
+  sql('delete from public.polls; delete from public.shared_files; delete from public.finance_entries; delete from public.messages; delete from public.tasks; delete from public.participant_invitations; delete from auth.users; delete from private.sign_in_attempts;')
   await fetch(`${MAIL}/api/v1/messages`, { method: 'DELETE' })
 
   const created = await api('/auth/v1/admin/users', {
@@ -96,6 +96,16 @@ async function main() {
     const link = await box.inputValue()
     assert.match(link, /\/auth\/v1\/verify\?/)
     return link
+  }
+  /** Wait until a poll result row reads e.g. "2 votes". */
+  const resultSays = async (poll, label, text) => {
+    const row = poll.getByTestId('poll-result').filter({ hasText: label })
+    for (let i = 0; i < 60; i++) {
+      const all = await row.allTextContents()
+      if (all.some((t) => t.replace(/\s+/g, ' ').includes(text))) return
+      await sleep(250)
+    }
+    throw new Error(`"${label}" never showed "${text}": ${JSON.stringify(await row.allTextContents())}`)
   }
   const mailCount = async () => (await (await fetch(`${MAIL}/api/v1/messages`)).json()).messages.length
   const snap = async (page, name) => {
@@ -505,8 +515,97 @@ async function main() {
     assert.equal(await lee.getByTestId('shared-file').filter({ hasText: 'Price list 2026' }).count(), 0)
     ok('when the owner stops sharing a file, it disappears for everyone else')
 
+    // ---- Polls ----
+    section('5. Polls, with the real back end')
+    step = 0
+    await nav(owner, 'Polls').click()
+    await owner.getByText('No polls yet').waitFor()
+    await owner.getByRole('button', { name: 'New poll' }).click()
+    const pollDialog = owner.getByRole('dialog')
+    await pollDialog.getByLabel('Question').fill('Which day suits the workshop?')
+    await pollDialog.getByLabel('Choice 1', { exact: true }).fill('Monday')
+    await pollDialog.getByLabel('Choice 2', { exact: true }).fill('Tuesday')
+    await pollDialog.getByLabel('Choice 3', { exact: true }).fill('Wednesday')
+    await pollDialog.getByRole('button', { name: 'Add a choice' }).click()
+    await pollDialog.getByLabel('Choice 4', { exact: true }).fill('Thursday')
+    await pollDialog.getByRole('button', { name: 'Add a choice' }).click()
+    await pollDialog.getByLabel('Choice 5', { exact: true }).fill('tuesday')
+    await pollDialog.getByRole('button', { name: 'Start the poll' }).click()
+    await pollDialog.getByRole('alert').getByText('Two choices are the same').waitFor()
+    await pollDialog.getByRole('button', { name: 'Remove choice 5' }).click()
+    await pollDialog.getByRole('button', { name: 'Start the poll' }).click()
+    await owner.getByTestId('poll').filter({ hasText: 'Which day suits the workshop?' }).getByText('Choose one ·').waitFor()
+
+    await owner.getByRole('button', { name: 'New poll' }).click()
+    await pollDialog.getByLabel('Question').fill('Which topics do you want help with?')
+    for (const [i, label] of ['Pricing', 'Marketing', 'Taxes', 'Pitching', 'Legal'].entries()) {
+      if (i >= 3) await pollDialog.getByRole('button', { name: 'Add a choice' }).click()
+      await pollDialog.getByLabel(`Choice ${i + 1}`, { exact: true }).fill(label)
+    }
+    await pollDialog.getByLabel('People can pick more than one').check()
+    await pollDialog.getByRole('button', { name: 'Start the poll' }).click()
+    await owner.getByTestId('poll').filter({ hasText: 'Which topics' }).getByText('Choose one or more').waitFor()
+    const firstPoll = owner.getByTestId('poll').filter({ hasText: 'Which day' })
+    await resultSays(firstPoll, 'Monday', '0 votes')
+    assert.equal(await firstPoll.getByRole('radio').count(), 0)
+    await snap(owner, 'owner-polls')
+    ok('the owner makes a one-choice poll with 4 choices (a repeated choice is caught) and a pick-several poll with 5, and sees the results straight away')
+
+    await nav(sam, 'Polls').click()
+    const samDay = sam.getByTestId('poll').filter({ hasText: 'Which day' })
+    assert.equal(await samDay.getByTestId('poll-result').count(), 0)
+    await samDay.getByRole('button', { name: 'Vote' }).click()
+    await samDay.getByRole('alert').getByText('Pick a choice first').waitFor()
+    await samDay.getByLabel('Tuesday').check()
+    await samDay.getByLabel('Thursday').check()
+    assert.equal(await samDay.getByLabel('Tuesday').isChecked(), false)
+    await samDay.getByRole('button', { name: 'Vote' }).click()
+    await samDay.getByText('You voted').waitFor()
+    await resultSays(samDay, 'Thursday', '100%')
+    await resultSays(samDay, 'Thursday', 'your choice')
+    const samTopics = sam.getByTestId('poll').filter({ hasText: 'Which topics' })
+    for (const label of ['Pricing', 'Taxes', 'Legal']) await samTopics.getByLabel(label).check()
+    await samTopics.getByRole('button', { name: 'Vote' }).click()
+    await samTopics.getByText('You voted').waitFor()
+    await samTopics.getByText('your choice').nth(2).waitFor()
+    assert.equal(await samTopics.getByText('your choice').count(), 3)
+    await snap(sam, 'participant-polls')
+    ok('Sam sees no results before voting, can pick only one on the one-choice poll, three on the other, then sees the results')
+
+    await nav(lee, 'Polls').click()
+    const leeDay = lee.getByTestId('poll').filter({ hasText: 'Which day' })
+    await leeDay.getByLabel('Monday').check()
+    await leeDay.getByRole('button', { name: 'Vote' }).click()
+    await leeDay.getByTestId('voter-count').getByText('2 people have voted').waitFor()
+    await leeDay.getByRole('button', { name: 'Change my vote' }).click()
+    await leeDay.getByLabel('Thursday').check()
+    await leeDay.getByRole('button', { name: 'Save my new vote' }).click()
+    await resultSays(leeDay, 'Thursday', '2 votes')
+    await resultSays(leeDay, 'Monday', '0 votes')
+    ok('Lee votes, then changes the vote; the totals follow (Thursday 2, Monday 0)')
+
+    await owner.reload()
+    const ownerDay = owner.getByTestId('poll').filter({ hasText: 'Which day' })
+    await resultSays(ownerDay, 'Thursday', '2 votes')
+    await ownerDay.getByRole('button', { name: 'Close the poll' }).click()
+    await owner.getByRole('heading', { name: 'Closed' }).waitFor()
+    await sam.reload()
+    const samClosed = sam.getByTestId('poll').filter({ hasText: 'Which day' })
+    await samClosed.getByText('Closed', { exact: true }).waitFor()
+    assert.equal(await samClosed.getByRole('button', { name: /vote/i }).count(), 0)
+    ok('the owner sees the totals and closes the poll; Sam can no longer vote on it')
+
+    const ownerTopics = owner.getByTestId('poll').filter({ hasText: 'Which topics' })
+    await ownerTopics.getByRole('button', { name: 'Delete' }).click()
+    await ownerTopics.getByRole('button', { name: 'Yes, delete it' }).click()
+    await ownerTopics.waitFor({ state: 'detached' })
+    await sam.reload()
+    await sam.getByTestId('poll').filter({ hasText: 'Which day' }).waitFor()
+    assert.equal(await sam.getByTestId('poll').filter({ hasText: 'Which topics' }).count(), 0)
+    ok('the owner deletes a poll and it disappears for everyone')
+
     // ---- Security: try every door, straight at the back end ----
-    section('5. Security (talking to the back end directly, skipping the screens)')
+    section('6. Security (talking to the back end directly, skipping the screens)')
     step = 0
     const samToken = (await signInApi('sam.b', SAM_NEW_PASSWORD)).data.access_token
     const ownerToken = (await signInApi('owner', OWNER_PASSWORD)).data.access_token
@@ -705,6 +804,27 @@ async function main() {
     assert.ok(!(await rpcCall('share_file', leeToken, { p_path: hiddenFile, p_title: 'Mine now', p_file_name: 'x.xlsx' })).ok)
     assert.equal(sql(`select status from public.shared_files where id = '${hiddenId}'`), 'rejected')
     ok('only spreadsheets can be uploaded, only into your own folder, and nobody but the owner can approve a file')
+
+    // ---- Polls ----
+    const pollId = sql("select id from public.polls limit 1")
+    const optionOf = (label) => sql(`select id from public.poll_options where label = '${label}'`)
+    sql(`select 1 from public.polls; update public.polls set closed_at = null where id = '${pollId}'`)
+    for (const token of [ownerToken, samToken, leeToken]) {
+      const theirs = (await api('/rest/v1/poll_votes?select=voter_id', { token })).data
+      assert.ok(theirs.every((v) => v.voter_id !== samId) || token === samToken, 'nobody but Sam can read Sam\'s vote')
+    }
+    assert.equal((await api('/rest/v1/poll_votes?select=voter_id', { token: ownerToken })).data.length, 0)
+    ok('votes are anonymous: not even the owner can read who voted for what')
+
+    assert.ok(!(await api('/rest/v1/poll_votes', { method: 'POST', token: leeToken, body: { poll_id: pollId, option_id: optionOf('Monday'), voter_id: samId } })).ok)
+    assert.ok(!(await rpcCall('cast_vote', leeToken, { p_poll_id: pollId, p_option_ids: [optionOf('Monday'), optionOf('Tuesday')] })).ok)
+    assert.ok(!(await rpcCall('create_poll', samToken, { p_question: 'Mine', p_options: ['a', 'b'], p_allow_multiple: false })).ok)
+    assert.ok(!(await rpcCall('close_poll', samToken, { p_poll_id: pollId })).ok)
+    await api(`/rest/v1/polls?id=eq.${pollId}`, { method: 'DELETE', token: samToken })
+    assert.ok(!(await api('/rest/v1/polls?select=id')).ok)
+    assert.equal(sql(`select count(*) from public.polls where id = '${pollId}'`), '1')
+    assert.equal(sql(`select count(*) from public.poll_votes where poll_id = '${pollId}'`), '2')
+    ok('nobody can vote in someone else\'s name or pick two on a one-choice poll; participants cannot create, close or delete polls; visitors see nothing')
 
     const bundle = execFileSync('sh', ['-c', 'cat dist/assets/*.js'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
     assert.ok(!bundle.includes(SERVICE) && !bundle.includes('service_role'))

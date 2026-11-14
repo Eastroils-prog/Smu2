@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { BrowserRouter, NavLink, Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
-import { CheckSquare, FileSpreadsheet, Home, LogOut, MessageCircle, PiggyBank, Sprout, User, Users } from 'lucide-react'
+import { CheckSquare, FileSpreadsheet, Home, LogOut, MessageCircle, PiggyBank, Sprout, User, Users, Vote } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { formatDate } from '../lib/data'
 import { Avatar, Button, Card, Field, PageTitle, inputClass } from '../features/shared/ui'
@@ -13,6 +13,7 @@ import { MessagesPage } from './Messages'
 import { MyHome } from './Home'
 import { MyMoney } from './Money'
 import { FilesPage } from './Files'
+import { PollsPage } from './Polls'
 import { unreadTotal, useMessages, useSharedFiles, useStages, useTasks } from './data'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true } } })
@@ -63,6 +64,7 @@ function Gate() {
           <Route path="/admin/messages" element={<MessagesPage base="/admin/messages" />} />
           <Route path="/admin/messages/:id" element={<MessagesPage base="/admin/messages" />} />
           <Route path="/admin/files" element={<FilesPage />} />
+          <Route path="/admin/polls" element={<PollsPage />} />
           <Route path="/admin/profile" element={<MyProfilePage />} />
         </Route>
       ) : (
@@ -73,6 +75,7 @@ function Gate() {
           <Route path="/app/messages/:id" element={<MessagesPage base="/app/messages" />} />
           <Route path="/app/money" element={<MyMoney />} />
           <Route path="/app/files" element={<FilesPage />} />
+          <Route path="/app/polls" element={<PollsPage />} />
           <Route path="/app/profile" element={<MyProfilePage />} />
         </Route>
       )}
@@ -102,6 +105,7 @@ function RealShell() {
         { to: '/admin/tasks', label: 'Tasks', icon: <CheckSquare size={19} />, badge: toCheck },
         { to: '/admin/messages', label: 'Messages', icon: <MessageCircle size={19} />, badge: unread },
         { to: '/admin/files', label: 'Files', icon: <FileSpreadsheet size={19} />, badge: filesToCheck },
+        { to: '/admin/polls', label: 'Polls', icon: <Vote size={19} /> },
         { to: '/admin/profile', label: 'My account', icon: <User size={19} /> },
       ]
     : [
@@ -110,6 +114,7 @@ function RealShell() {
         { to: '/app/messages', label: 'Messages', icon: <MessageCircle size={19} />, badge: unread },
         { to: '/app/money', label: 'Money', icon: <PiggyBank size={19} /> },
         { to: '/app/files', label: 'Files', icon: <FileSpreadsheet size={19} /> },
+        { to: '/app/polls', label: 'Polls', icon: <Vote size={19} /> },
         { to: '/app/profile', label: 'Profile', icon: <User size={19} /> },
       ]
 

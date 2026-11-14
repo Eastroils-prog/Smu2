@@ -17,6 +17,8 @@ and follow-ups.
   them and the owner) and shared spreadsheets (visible to everyone once the
   owner approves): **built and tested locally; database part applied to the
   hosted project**.
+- Polls (owner asks, 2–10 choices, one or several picks, anonymous votes):
+  **built and tested locally; database part applied to the hosted project**.
 - Not built yet: owner dashboard, private notes, milestones, reminders,
   calendar, analytics. Those exist only in the sample. Messages refresh every
   few seconds rather than instantly.
@@ -54,6 +56,6 @@ Create the one administrator (once):
 Tests:
 
 ```
-npm run test:db                   # 106 database-level checks (pgTAP)
-npm run build && npm run test:real  # 59 end-to-end checks; WIPES local accounts
+npm run test:db                   # 132 database-level checks (pgTAP)
+npm run build && npm run test:real  # 66 end-to-end checks; WIPES local accounts
 ```
