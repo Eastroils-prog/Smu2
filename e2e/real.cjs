@@ -22,6 +22,7 @@ const shots = process.env.SHOTS_DIR
 const OWNER_PASSWORD = 'owner-password-1'
 const SAM_PASSWORD = 'sam-password-12'
 const SAM_NEW_PASSWORD = 'sam-new-password-3'
+const LEE_PASSWORD = 'lee-password-123'
 
 const sql = (query) => execFileSync('psql', [DB, '-v', 'ON_ERROR_STOP=1', '-Atc', query], { encoding: 'utf8' }).trim()
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -64,7 +65,7 @@ async function main() {
   }
 
   // ---- Clean start: no accounts, no mail, one owner created the documented way ----
-  sql('delete from public.participant_invitations; delete from auth.users; delete from private.sign_in_attempts;')
+  sql('delete from public.messages; delete from public.tasks; delete from public.participant_invitations; delete from auth.users; delete from private.sign_in_attempts;')
   await fetch(`${MAIL}/api/v1/messages`, { method: 'DELETE' })
 
   const created = await api('/auth/v1/admin/users', {
@@ -179,8 +180,12 @@ async function main() {
 
     await sam.getByLabel('Choose a username').fill('sam.b')
     await sam.getByRole('button', { name: 'Create my account' }).click()
+    await sam.getByRole('heading', { name: 'Hello, Sam' }).waitFor()
+    await snap(sam, 'participant-home-empty')
+    ok('Sam picks a username and password and lands on their home page')
+
+    await sam.getByRole('navigation').getByRole('link', { name: /^Profile/ }).click()
     await sam.getByRole('heading', { name: 'My profile' }).waitFor()
-    ok('Sam picks a username and password and lands on their profile')
 
     await sam.getByLabel('Your business idea').fill('Dog walking for busy families.')
     await sam.getByRole('button', { name: 'Save changes' }).click()
@@ -196,11 +201,11 @@ async function main() {
     await sam.getByLabel('Username').fill('Sam.B')
     await sam.getByLabel('Password', { exact: true }).fill(SAM_PASSWORD)
     await sam.getByRole('button', { name: 'Sign in' }).click()
-    await sam.getByRole('heading', { name: 'My profile' }).waitFor()
+    await sam.getByRole('heading', { name: 'Hello, Sam' }).waitFor()
     ok('Sam signs out and signs back in with the username')
 
     await sam.goto(`${SITE}/admin/people`)
-    await sam.getByRole('heading', { name: 'My profile' }).waitFor()
+    await sam.getByRole('heading', { name: 'Hello, Sam' }).waitFor()
     ok('Sam cannot open the owner pages')
 
     // ---- Owner manages Sam ----
@@ -250,7 +255,11 @@ async function main() {
     assert.equal(await lee.getByRole('heading', { name: /Welcome/ }).count(), 0)
     await lee.goto(secondLeeLink)
     await lee.getByRole('heading', { name: 'Welcome, Lee!' }).waitFor()
-    await leeCtx.close()
+    await lee.getByLabel('Choose a username').fill('lee.p')
+    await lee.getByLabel(/Choose a password/).fill(LEE_PASSWORD)
+    await lee.getByRole('button', { name: 'Create my account' }).click()
+    await lee.getByRole('heading', { name: 'Hello, Lee' }).waitFor()
+    watch(lee, 'lee')
     ok('"Get a new link" makes a fresh link, and the old one stops working')
 
     // ---- Forgot password: the owner makes a link ----
@@ -268,7 +277,7 @@ async function main() {
     await sam.getByRole('alert').getByText('at least 10').waitFor()
     await sam.getByLabel(/New password/).fill(SAM_NEW_PASSWORD)
     await sam.getByRole('button', { name: 'Save new password' }).click()
-    await sam.getByRole('heading', { name: 'My profile' }).waitFor()
+    await sam.getByRole('heading', { name: 'Hello, Sam' }).waitFor()
     assert.equal((await signInApi('sam.b', SAM_PASSWORD)).status, 401)
     assert.equal((await signInApi('sam.b', SAM_NEW_PASSWORD)).status, 200)
     sql('delete from private.sign_in_attempts;')
@@ -281,8 +290,118 @@ async function main() {
     assert.equal(await mailCount(), 0)
     ok('forgot password: the owner makes a link, Sam chooses a new password, and the link cannot be used twice')
 
-    // ---- 4. Security: try every door, straight at the back end ----
-    section('3. Security (talking to the back end directly, skipping the screens)')
+    // ---- Tasks ----
+    section('3. Tasks, files and messages, with the real back end')
+    step = 0
+    const percent = async (page) => Number(await page.getByRole('progressbar').first().getAttribute('aria-valuenow'))
+    const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
+
+    await owner.getByRole('button', { name: 'Give a task' }).click()
+    await owner.getByLabel('What should they do?').fill('Write a one-page plan')
+    await owner.getByLabel('Details (optional)').fill('Who buys, what they pay, what it costs you.')
+    await owner.getByRole('button', { name: 'Give this task' }).click()
+    await owner.getByTestId('task-card').filter({ hasText: 'Write a one-page plan' }).waitFor()
+    assert.equal(await percent(owner), 17)
+    ok('the owner gives Sam a task; Sam is in stage 2 of 6 with nothing approved, so progress is 17%')
+
+    await sam.getByRole('navigation').getByRole('link', { name: /^Tasks/ }).click()
+    const samTask = sam.getByTestId('task-card').filter({ hasText: 'Write a one-page plan' })
+    await samTask.getByRole('button', { name: 'Start this task' }).click()
+    await samTask.getByText('In progress').waitFor()
+    await samTask.getByLabel('Your work').fill('Here is my plan, with a photo and my costs.')
+    await samTask.locator('input[type=file]').setInputFiles([
+      { name: 'plan photo.png', mimeType: 'image/png', buffer: PNG },
+      { name: 'costs.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 sample costs') },
+    ])
+    assert.equal(await samTask.getByTestId('picked-file').count(), 2)
+    await samTask.getByRole('button', { name: 'Hand in' }).click()
+    await samTask.getByText('Waiting for the owner').waitFor()
+    assert.equal(await samTask.getByTestId('attachment').count(), 2)
+    await samTask.locator('img').waitFor()
+    assert.ok(await samTask.locator('img').evaluate((img) => img.complete && img.naturalWidth > 0), 'the picture should really load')
+    assert.equal(await sam.getByRole('button', { name: 'Approve' }).count(), 0)
+    await snap(sam, 'participant-task-handed-in')
+    ok('Sam starts the task and hands in text, a picture and a file; the picture loads back from storage')
+
+    await owner.getByRole('navigation').getByRole('link', { name: /^Tasks/ }).click()
+    await owner.getByRole('button', { name: 'To check (1)' }).waitFor()
+    const ownerTask = owner.getByTestId('task-card').filter({ hasText: 'Write a one-page plan' })
+    await ownerTask.getByText('Here is my plan, with a photo and my costs.').waitFor()
+    assert.equal(await ownerTask.getByTestId('attachment').count(), 2)
+    await ownerTask.locator('img').waitFor()
+    assert.ok(await ownerTask.locator('img').evaluate((img) => img.complete && img.naturalWidth > 0))
+    await snap(owner, 'owner-task-review')
+    await ownerTask.getByLabel(/Your feedback/).fill('Please add your prices.')
+    await ownerTask.getByRole('button', { name: 'Ask for changes' }).click()
+    await owner.getByRole('button', { name: 'To check (0)' }).waitFor()
+    ok('the owner sees the work and both files, and asks for changes')
+
+    await sam.reload()
+    const samTask2 = sam.getByTestId('task-card').filter({ hasText: 'Write a one-page plan' })
+    await samTask2.getByText('Needs changes').waitFor()
+    await samTask2.getByText('Please add your prices.').waitFor()
+    await samTask2.getByLabel('Your work').fill('Added prices: 12 euros per walk.')
+    await samTask2.getByRole('button', { name: 'Hand in' }).click()
+    await samTask2.getByText('Waiting for the owner').waitFor()
+    ok('Sam reads the feedback and hands in again')
+
+    await owner.reload()
+    await owner.getByRole('button', { name: 'To check (1)' }).waitFor()
+    const ownerTask2 = owner.getByTestId('task-card').filter({ hasText: 'Write a one-page plan' })
+    await ownerTask2.getByLabel(/Your feedback/).fill('Clear plan. Approved!')
+    await ownerTask2.getByRole('button', { name: 'Approve' }).click()
+    await owner.getByRole('button', { name: 'To check (0)' }).waitFor()
+    await owner.getByRole('navigation').getByRole('link', { name: /^People/ }).click()
+    // Lee is listed first, so look at Sam's own row.
+    await owner.getByRole('link', { name: /Sam Baker/ }).locator('[role=progressbar][aria-valuenow="33"]').waitFor()
+    await snap(owner, 'owner-people-progress')
+    await sam.getByRole('navigation').getByRole('link', { name: /^Home/ }).click()
+    await sam.reload()
+    await sam.getByText('Clear plan. Approved!').waitFor()
+    await sam.locator('[role=progressbar][aria-valuenow="33"]').waitFor()
+    await snap(sam, 'participant-home')
+    ok('the owner approves; progress moves to 33% for both the owner and Sam')
+
+    // ---- Messages ----
+    await owner.getByRole('navigation').getByRole('link', { name: /^Messages/ }).click()
+    await owner.getByRole('link', { name: /Sam Baker/ }).click()
+    await owner.getByLabel('Write a message').fill('Well done on the plan!')
+    await owner.getByRole('button', { name: 'Send message' }).click()
+    await owner.getByTestId('chat-thread').getByText('Well done on the plan!').waitFor()
+    await sam.getByRole('navigation').getByRole('link', { name: /Messages/ }).click()
+    await sam.getByRole('link', { name: /Administrator/ }).getByText('1 new').waitFor({ timeout: 15000 })
+    await snap(sam, 'participant-messages')
+    await sam.getByRole('link', { name: /Administrator/ }).click()
+    await sam.getByTestId('chat-thread').getByText('Well done on the plan!').waitFor()
+    await sam.getByLabel('Write a message').fill('Thank you!')
+    await sam.getByRole('button', { name: 'Send message' }).click()
+    await owner.getByTestId('chat-thread').getByText('Thank you!').waitFor({ timeout: 15000 })
+    await snap(owner, 'owner-chat')
+    ok('the owner and Sam exchange messages; the reply appears on the other screen by itself within seconds')
+
+    await sam.getByRole('link', { name: 'All conversations' }).click()
+    await sam.getByRole('link', { name: /Lee Park/ }).click()
+    await sam.getByLabel('Write a message').fill('Hi Lee, want to swap flyers?')
+    await sam.getByRole('button', { name: 'Send message' }).click()
+    await lee.getByRole('navigation').getByRole('link', { name: /Messages/ }).click()
+    await lee.getByRole('link', { name: /Sam Baker/ }).click()
+    await lee.getByTestId('chat-thread').getByText('Hi Lee, want to swap flyers?').waitFor({ timeout: 15000 })
+    await lee.getByLabel('Write a message').fill('Yes please!')
+    await lee.getByRole('button', { name: 'Send message' }).click()
+    await sam.getByTestId('chat-thread').getByText('Yes please!').waitFor({ timeout: 15000 })
+    ok('Sam and Lee, two participants, message each other')
+
+    await owner.getByRole('link', { name: 'All conversations' }).click()
+    await owner.getByRole('link', { name: /Lee Park/ }).click()
+    await owner.getByTestId('chat-thread').waitFor()
+    assert.equal(await owner.getByText('swap flyers').count(), 0)
+    assert.equal(await lee.getByRole('navigation').getByRole('link', { name: /^Tasks/ }).count(), 1)
+    await lee.getByRole('navigation').getByRole('link', { name: /^Tasks/ }).click()
+    await lee.getByText('You have no tasks yet').waitFor()
+    ok("the owner's screen shows nothing of the Sam–Lee conversation, and Lee sees none of Sam's tasks")
+
+    // ---- Security: try every door, straight at the back end ----
+    section('4. Security (talking to the back end directly, skipping the screens)')
     step = 0
     const samToken = (await signInApi('sam.b', SAM_NEW_PASSWORD)).data.access_token
     const ownerToken = (await signInApi('owner', OWNER_PASSWORD)).data.access_token
@@ -377,6 +496,72 @@ async function main() {
     ok('after 5 wrong passwords the username is locked, even for the right password')
     sql('delete from private.sign_in_attempts;')
     assert.equal((await signInApi('sam.b', SAM_NEW_PASSWORD)).status, 200)
+
+
+    // ---- Tasks, files and messages ----
+    const leeToken = (await signInApi('lee.p', LEE_PASSWORD)).data.access_token
+    const leeId = sql("select id from public.profiles where username = 'lee.p'")
+    const taskId = sql("select id from public.tasks limit 1")
+    const samFile = sql("select storage_path from public.task_attachments order by file_name limit 1")
+
+    for (const table of ['tasks', 'task_submissions', 'task_attachments']) {
+      assert.deepEqual((await api(`/rest/v1/${table}?select=id`, { token: leeToken })).data, [])
+      assert.ok(!(await api(`/rest/v1/${table}?select=id`)).ok)
+    }
+    ok("Lee can read none of Sam's tasks, handed-in work or file records; a visitor is refused outright")
+
+    const download = (token) => fetch(`${API}/storage/v1/object/authenticated/submissions/${samFile}`, { headers: { apikey: ANON, Authorization: `Bearer ${token}` } })
+    assert.equal((await download(samToken)).status, 200)
+    assert.equal((await download(ownerToken)).status, 200)
+    assert.ok((await download(leeToken)).status >= 400)
+    assert.ok((await download(ANON)).status >= 400)
+    assert.ok((await fetch(`${API}/storage/v1/object/public/submissions/${samFile}`)).status >= 400)
+    const leeSign = await api(`/storage/v1/object/sign/submissions/${samFile}`, { method: 'POST', token: leeToken, body: { expiresIn: 60 } })
+    assert.ok(!leeSign.ok)
+    ok("Sam's files open for Sam and the owner only: not for Lee, not for visitors, and there is no public address")
+
+    const upload = (token, path) => fetch(`${API}/storage/v1/object/submissions/${path}`, {
+      method: 'POST', headers: { apikey: ANON, Authorization: `Bearer ${token}`, 'Content-Type': 'text/plain' }, body: 'planted',
+    })
+    assert.ok((await upload(leeToken, `${samId}/${taskId}/planted.txt`)).status >= 400)
+    assert.ok((await upload(ANON, `${leeId}/x/planted.txt`)).status >= 400)
+    const overwrite = await fetch(`${API}/storage/v1/object/submissions/${samFile}`, {
+      method: 'PUT', headers: { apikey: ANON, Authorization: `Bearer ${samToken}`, 'Content-Type': 'text/plain' }, body: 'swapped',
+    })
+    assert.ok(overwrite.status >= 400)
+    const removal = await api('/storage/v1/object/submissions', { method: 'DELETE', token: samToken, body: { prefixes: [samFile] } })
+    assert.equal((await download(ownerToken)).status, 200, `a handed-in file must survive a delete attempt (${removal.status})`)
+    ok("nobody can put files into someone else's folder, and a handed-in file cannot be swapped or deleted")
+
+    const rpcCall = (name, token, body) => api(`/rest/v1/rpc/${name}`, { method: 'POST', token, body })
+    assert.ok(!(await rpcCall('review_task', samToken, { p_task_id: taskId, p_approve: true })).ok)
+    assert.ok(!(await api(`/rest/v1/tasks?id=eq.${taskId}`, { method: 'PATCH', token: samToken, body: { status: 'not_started' } })).ok)
+    assert.ok(!(await api('/rest/v1/tasks', { method: 'POST', token: samToken, body: { participant_id: samId, title: 'Self-made' } })).ok)
+    assert.ok(!(await api(`/rest/v1/tasks?id=eq.${taskId}`, { method: 'PATCH', token: ownerToken, body: { status: 'not_started' } })).ok)
+    assert.ok(!(await rpcCall('submit_task', leeToken, { p_task_id: taskId, p_body: 'mine' })).ok)
+    assert.equal(sql('select count(*) from public.tasks'), '1')
+    assert.equal(sql(`select status from public.tasks where id = '${taskId}'`), 'completed')
+    ok('Sam cannot approve, create or change tasks; Lee cannot hand in for Sam; even the owner cannot set a status by hand')
+
+    const ownerMessages = (await api('/rest/v1/messages?select=body', { token: ownerToken })).data.map((m) => m.body)
+    assert.ok(ownerMessages.includes('Thank you!') && !ownerMessages.some((b) => /flyers|Yes please/.test(b)))
+    const leeMessages = (await api('/rest/v1/messages?select=body', { token: leeToken })).data.map((m) => m.body)
+    assert.deepEqual(leeMessages.sort(), ['Hi Lee, want to swap flyers?', 'Yes please!'])
+    assert.ok(!(await api('/rest/v1/messages?select=body')).ok)
+    ok('messages are readable only by the two people in them: the owner cannot read Sam and Lee, Lee cannot read Sam and the owner')
+
+    const forged = await api('/rest/v1/messages', { method: 'POST', token: leeToken, body: { sender_id: ownerId, recipient_id: samId, body: 'forged' } })
+    assert.ok(!forged.ok)
+    assert.ok(!(await api('/rest/v1/messages?sender_id=eq.' + samId, { method: 'PATCH', token: leeToken, body: { body: 'edited' } })).ok)
+    assert.ok(!(await api('/rest/v1/messages?sender_id=eq.' + leeId, { method: 'DELETE', token: leeToken })).ok)
+    assert.equal(sql("select count(*) from public.messages where body in ('forged', 'edited')"), '0')
+    assert.equal(sql('select count(*) from public.messages'), '4')
+    ok('a message cannot be forged in someone else\'s name, edited or deleted')
+
+    const directory = (await rpcCall('directory', leeToken, {})).data
+    assert.deepEqual(Object.keys(directory[0]).sort(), ['full_name', 'id', 'is_owner'])
+    assert.ok(!(await rpcCall('directory', ANON, {})).ok)
+    ok('participants can see each other\'s names and nothing else (no e-mail, no username)')
 
     const bundle = execFileSync('sh', ['-c', 'cat dist/assets/*.js'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
     assert.ok(!bundle.includes(SERVICE) && !bundle.includes('service_role'))

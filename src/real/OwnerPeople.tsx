@@ -1,35 +1,16 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Check, Copy, Link2, UserPlus } from 'lucide-react'
+import { ArrowLeft, Check, Copy, Link2, MessageCircle, Plus, UserPlus } from 'lucide-react'
 import { PROFILE_COLUMNS, supabase, type Invitation, type Profile, type Stage } from '../lib/supabase'
 import { formatDate } from '../lib/data'
 import { Avatar, Badge, Button, Card, Empty, Field, Modal, PageTitle, SectionTitle, inputClass } from '../features/shared/ui'
 import { callAsMe } from './auth'
+import { progressOf, usePeople, useStages, useSubmissions, useTasks } from './data'
+import { StageProgress } from './Home'
+import { GiveTaskModal, TaskCard } from './Tasks'
 
 // ---------- Data ----------
-
-export function useStages() {
-  return useQuery({
-    queryKey: ['stages'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('stages').select('id, position, name, description').eq('is_archived', false).order('position')
-      if (error) throw error
-      return data as Stage[]
-    },
-  })
-}
-
-function usePeople() {
-  return useQuery({
-    queryKey: ['people'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('profiles').select(PROFILE_COLUMNS).eq('role', 'participant').order('full_name')
-      if (error) throw error
-      return data as Profile[]
-    },
-  })
-}
 
 function useInvitations() {
   return useQuery({
@@ -103,6 +84,7 @@ export function OwnerPeople() {
   const people = usePeople()
   const invitations = useInvitations()
   const stages = useStages()
+  const tasks = useTasks()
   const [inviting, setInviting] = useState(false)
   const stageName = (id: string | null) => stages.data?.find((s) => s.id === id)?.name ?? ''
   const joined = (people.data ?? []).filter((p) => p.status !== 'invited')
@@ -149,16 +131,22 @@ export function OwnerPeople() {
               <li key={p.id}>
                 <Link
                   to={`/admin/people/${p.id}`}
-                  className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface p-4 transition-colors hover:border-accent"
+                  className="grid grid-cols-1 items-center gap-x-4 gap-y-3 rounded-2xl border border-line bg-surface p-4 transition-colors hover:border-accent sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto]"
                 >
-                  <Avatar name={p.full_name} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-semibold">{p.full_name}</span>
-                    <span className="block truncate text-sm text-muted">
-                      @{p.username} · {stageName(p.current_stage_id) || 'No stage yet'}
+                  <span className="flex min-w-0 items-center gap-3">
+                    <Avatar name={p.full_name} />
+                    <span className="min-w-0">
+                      <span className="block truncate font-semibold">{p.full_name}</span>
+                      <span className="block truncate text-sm text-muted">
+                        @{p.username} · {stageName(p.current_stage_id) || 'No stage yet'}
+                      </span>
                     </span>
                   </span>
-                  {p.archived_at ? <Badge>Archived</Badge> : <Badge tone="accent">Active</Badge>}
+                  <StageProgress value={progressOf(p, tasks.data ?? [], stages.data ?? [])} stages={stages.data ?? []} />
+                  <span className="flex flex-wrap gap-1.5 sm:justify-end">
+                    {(tasks.data ?? []).some((t) => t.participant_id === p.id && t.status === 'submitted') && <Badge tone="warn">Work to check</Badge>}
+                    {p.archived_at ? <Badge>Archived</Badge> : <Badge tone="accent">Active</Badge>}
+                  </span>
                 </Link>
               </li>
             ))}
@@ -310,6 +298,9 @@ export function OwnerPerson() {
   const [note, setNote] = useState('')
   const [resetLink, setResetLink] = useState('')
   const [resetBusy, setResetBusy] = useState(false)
+  const [giving, setGiving] = useState(false)
+  const tasks = useTasks()
+  const submissions = useSubmissions()
   const person = useQuery({
     queryKey: ['people', id],
     queryFn: async () => {
@@ -351,6 +342,36 @@ export function OwnerPerson() {
         </div>
         {p.archived_at ? <Badge>Archived</Badge> : <Badge tone="accent">Active</Badge>}
       </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={() => setGiving(true)} disabled={!!p.archived_at}>
+          <Plus size={17} />
+          Give a task
+        </Button>
+        {!p.archived_at && (
+          <Link to={`/admin/messages/${p.id}`} className="inline-flex items-center gap-2 rounded-lg border border-line bg-surface px-4 py-2.5 text-sm font-medium hover:bg-sunken">
+            <MessageCircle size={17} />
+            Message
+          </Link>
+        )}
+      </div>
+
+      <Card>
+        <SectionTitle>Verified progress</SectionTitle>
+        <StageProgress value={progressOf(p, tasks.data ?? [], stages.data ?? [])} stages={stages.data ?? []} />
+        <p className="mt-2 text-sm text-muted">The bar moves when you approve their work. Moving them to the next stage is your decision, below.</p>
+      </Card>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-base font-semibold">Tasks</h2>
+        {(tasks.data ?? []).filter((t) => t.participant_id === id).length === 0 ? (
+          <Empty>No tasks yet.</Empty>
+        ) : (
+          (tasks.data ?? [])
+            .filter((t) => t.participant_id === id)
+            .map((t) => <TaskCard key={t.id} task={t} submissions={submissions.data ?? []} stages={stages.data ?? []} />)
+        )}
+      </section>
 
       <Card>
         <SectionTitle>Stage</SectionTitle>
@@ -416,6 +437,7 @@ export function OwnerPerson() {
       </Card>
 
       {note && <p role="status" className="text-sm font-medium text-accent-strong">{note}</p>}
+      {giving && <GiveTaskModal people={[p]} fixedPersonId={p.id} onClose={() => setGiving(false)} />}
     </>
   )
 }

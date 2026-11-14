@@ -51,6 +51,26 @@ Differences from the proposal below:
 - Not yet done for Phase 1: deployment to a hosted project, a real e-mail
   provider, avatar upload, admin settings screens.
 
+### Tasks and messages as built
+
+Source of truth: `supabase/migrations/20261114*`. Differences from the proposal below:
+
+- **Messages** are direct messages between any two people (`messages` with a
+  sender and a recipient), not one conversation per participant. Only the two
+  people in a message can read it; the administrator cannot read
+  participant-to-participant messages. Participants get other people's names
+  through `directory()` and nothing else. Delivery is by polling every five
+  seconds; Realtime is not used yet.
+- **Tasks**: status changes only through `start_task`, `submit_task` and
+  `review_task`. No API role has a column privilege on `status`, including
+  the administrator.
+- **Attachments** live in the private `submissions` bucket under
+  `<participant id>/<task id>/`. There are no update or delete policies, so a
+  handed-in file cannot be swapped or removed.
+- **Progress** is computed in the client from approved tasks in the current
+  stage. Milestones, task comments, stage history and progress updates are
+  not built.
+
 ---
 
 ## 1. Application architecture

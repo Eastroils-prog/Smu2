@@ -7,11 +7,15 @@ and follow-ups.
 **Status**
 
 - Step 1 — click-through sample with made-up people: **done**.
-- Step 2a — real sign-in (username + password), invitations by e-mail, forgot
-  password, saved profiles: **built and tested against a local Supabase stack**.
-  Not yet deployed to a hosted project.
-- Steps 2b–2d (dashboard, messaging, tasks and progress): not started. Those
-  screens exist only in the sample.
+- Step 2a — real sign-in (username + password), invitation and password-reset
+  links, saved profiles: **live**.
+- Tasks (give, start, hand in with pictures and files, approve or ask for
+  changes), verified progress, and private messages between any two people:
+  **built and tested against a local Supabase stack; database part applied to
+  the hosted project**.
+- Not built yet: owner dashboard, private notes, milestones, reminders,
+  calendar, analytics. Those exist only in the sample. Messages refresh every
+  few seconds rather than instantly.
 
 Docs: [plan in plain words](docs/PRD.md) · [architecture](docs/ARCHITECTURE.md) ·
 [database design reference](docs/schema.sql)
@@ -46,6 +50,6 @@ Create the one administrator (once):
 Tests:
 
 ```
-npm run test:db                   # 34 database-level checks (pgTAP)
-npm run build && npm run test:real  # 31 end-to-end checks; WIPES local accounts
+npm run test:db                   # 79 database-level checks (pgTAP)
+npm run build && npm run test:real  # 47 end-to-end checks; WIPES local accounts
 ```

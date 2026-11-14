@@ -1,13 +1,17 @@
 import { useState, type ReactNode } from 'react'
 import { BrowserRouter, NavLink, Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
-import { LogOut, Sprout, User, Users } from 'lucide-react'
+import { CheckSquare, Home, LogOut, MessageCircle, Sprout, User, Users } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { formatDate } from '../lib/data'
 import { Avatar, Button, Card, Field, PageTitle, inputClass } from '../features/shared/ui'
 import { AuthProvider, useAuth } from './auth'
 import { ForgotPage, SetPasswordPage, SignInPage, WelcomePage } from './AuthPages'
-import { OwnerPeople, OwnerPerson, useStages } from './OwnerPeople'
+import { OwnerPeople, OwnerPerson } from './OwnerPeople'
+import { MyTasks, OwnerTasks } from './Tasks'
+import { MessagesPage } from './Messages'
+import { MyHome } from './Home'
+import { unreadTotal, useMessages, useStages, useTasks } from './data'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true } } })
 
@@ -46,17 +50,24 @@ function Gate() {
   if (!profile) return <Centered>Loading…</Centered>
   if (profile.status === 'invited') return <WelcomePage />
 
-  const home = profile.role === 'admin' ? '/admin/people' : '/app/profile'
+  const home = profile.role === 'admin' ? '/admin/people' : '/app'
   return (
     <Routes>
       {profile.role === 'admin' ? (
         <Route element={<RealShell />}>
           <Route path="/admin/people" element={<OwnerPeople />} />
           <Route path="/admin/people/:id" element={<OwnerPerson />} />
+          <Route path="/admin/tasks" element={<OwnerTasks />} />
+          <Route path="/admin/messages" element={<MessagesPage base="/admin/messages" />} />
+          <Route path="/admin/messages/:id" element={<MessagesPage base="/admin/messages" />} />
           <Route path="/admin/profile" element={<MyProfilePage />} />
         </Route>
       ) : (
         <Route element={<RealShell />}>
+          <Route path="/app" element={<MyHome />} />
+          <Route path="/app/tasks" element={<MyTasks />} />
+          <Route path="/app/messages" element={<MessagesPage base="/app/messages" />} />
+          <Route path="/app/messages/:id" element={<MessagesPage base="/app/messages" />} />
           <Route path="/app/profile" element={<MyProfilePage />} />
         </Route>
       )}
@@ -72,14 +83,25 @@ function Centered({ children }: { children: ReactNode }) {
 function RealShell() {
   const { profile, signOut } = useAuth()
   const client = useQueryClient()
+  const messages = useMessages()
+  const tasks = useTasks()
   if (!profile) return null
   const isAdmin = profile.role === 'admin'
-  const items = isAdmin
+  const unread = unreadTotal(messages.data ?? [], profile.id)
+  const toCheck = isAdmin ? (tasks.data ?? []).filter((t) => t.status === 'submitted').length : 0
+  const items: { to: string; label: string; icon: ReactNode; end?: boolean; badge?: number }[] = isAdmin
     ? [
         { to: '/admin/people', label: 'People', icon: <Users size={19} /> },
+        { to: '/admin/tasks', label: 'Tasks', icon: <CheckSquare size={19} />, badge: toCheck },
+        { to: '/admin/messages', label: 'Messages', icon: <MessageCircle size={19} />, badge: unread },
         { to: '/admin/profile', label: 'My account', icon: <User size={19} /> },
       ]
-    : [{ to: '/app/profile', label: 'My profile', icon: <User size={19} /> }]
+    : [
+        { to: '/app', label: 'Home', icon: <Home size={19} />, end: true },
+        { to: '/app/tasks', label: 'Tasks', icon: <CheckSquare size={19} /> },
+        { to: '/app/messages', label: 'Messages', icon: <MessageCircle size={19} />, badge: unread },
+        { to: '/app/profile', label: 'Profile', icon: <User size={19} /> },
+      ]
 
   const leave = async () => {
     await signOut()
@@ -106,19 +128,25 @@ function RealShell() {
             <LogOut size={17} />
             Sign out
           </button>
-          <nav aria-label="Main" className="flex w-full gap-1 md:mt-4 md:flex-col">
+          <nav aria-label="Main" className="flex w-full flex-wrap gap-1 md:mt-4 md:flex-col md:flex-nowrap">
             {items.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
+                end={item.end}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-xl px-3 py-2.5 font-medium ${
+                  `flex items-center gap-2 rounded-xl px-3 py-2.5 font-medium md:gap-3 ${
                     isActive ? 'bg-accent-soft text-accent-strong' : 'text-muted hover:bg-sunken hover:text-ink'
                   }`
                 }
               >
                 {item.icon}
-                {item.label}
+                <span className="md:flex-1">{item.label}</span>
+                {!!item.badge && (
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-semibold text-on-accent tabular-nums">
+                    {item.badge}
+                  </span>
+                )}
               </NavLink>
             ))}
           </nav>
