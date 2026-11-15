@@ -4,6 +4,7 @@ create extension if not exists pgtap with schema extensions;
 select plan(26);
 
 -- Start from an empty programme. Everything in this file is rolled back at the end.
+delete from public.reminders; delete from public.help_requests; delete from public.milestones;
 delete from public.polls; delete from public.shared_files; delete from public.finance_entries;
 delete from public.messages; delete from public.tasks; delete from public.participant_invitations;
 delete from auth.users; delete from private.sign_in_attempts;
