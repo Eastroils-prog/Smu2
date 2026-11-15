@@ -4,6 +4,7 @@ import { Avatar, Badge, Card, Empty, PageTitle, SectionTitle } from '../features
 import { useAuth } from './auth'
 import { LoadError } from './Tasks'
 import { StageProgress } from './Home'
+import { DueReminders } from './Reminders'
 import {
   daysSince, dueLabel, isLate, progressOf, unreadFrom, useHelpRequests, useMessages, useMilestones, usePeople, useSettings,
   useSharedFiles, useStages, useTasks,
@@ -89,6 +90,8 @@ export function OwnerDashboard() {
           </Link>
         ))}
       </dl>
+
+      <DueReminders />
 
       <Card>
         <SectionTitle>Whole programme, verified progress</SectionTitle>

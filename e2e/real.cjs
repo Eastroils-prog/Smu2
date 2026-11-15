@@ -65,7 +65,7 @@ async function main() {
   }
 
   // ---- Clean start: no accounts, no mail, one owner created the documented way ----
-  sql('delete from public.help_requests; delete from public.milestones; delete from public.polls; delete from public.shared_files; delete from public.finance_entries; delete from public.messages; delete from public.tasks; delete from public.participant_invitations; delete from auth.users; delete from private.sign_in_attempts;')
+  sql('delete from public.reminders; delete from public.help_requests; delete from public.milestones; delete from public.polls; delete from public.shared_files; delete from public.finance_entries; delete from public.messages; delete from public.tasks; delete from public.participant_invitations; delete from auth.users; delete from private.sign_in_attempts;')
   await fetch(`${MAIL}/api/v1/messages`, { method: 'DELETE' })
 
   const created = await api('/auth/v1/admin/users', {
@@ -659,8 +659,86 @@ async function main() {
     assert.equal(await lee.getByTestId('milestone').count(), 0)
     ok("the owner ticks the milestone: progress returns to 33% for both; Lee sees none of Sam's milestones")
 
+    // ---- Calendar and reminders ----
+    section('7. Calendar and reminders, with the real back end')
+    step = 0
+    const localIso = (offset) => {
+      const d = new Date()
+      d.setDate(d.getDate() + offset)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    }
+    await nav(owner, 'Reminders').click()
+    await owner.getByText('No reminders').waitFor()
+    const addReminder = async (title, { date, repeat, person } = {}) => {
+      await owner.getByRole('button', { name: 'New reminder' }).first().click()
+      const d = owner.getByRole('dialog')
+      await d.getByLabel('What should you remember?').fill(title)
+      if (date) await d.getByLabel('When?').fill(date)
+      if (repeat) await d.getByLabel('Repeat').selectOption({ label: repeat })
+      if (person) await d.getByLabel(/About someone/).selectOption({ label: person })
+      await d.getByRole('button', { name: 'Save reminder' }).click()
+      await d.waitFor({ state: 'detached' })
+      await owner.getByTestId('reminder').filter({ hasText: title }).waitFor()
+    }
+    await addReminder('Call Sam about prices', { person: 'Sam Baker' })
+    await addReminder('Weekly check-in', { repeat: 'Every week' })
+    await addReminder('Book the workshop room', { date: localIso(3) })
+    await owner.getByTestId('reminder').filter({ hasText: 'Call Sam about prices' }).getByText('Sam Baker').waitFor()
+    await nav(owner, 'Reminders').getByText('2').waitFor()
+    await snap(owner, 'owner-reminders')
+    ok('the owner adds three reminders (one about Sam, one weekly, one in 3 days); the menu shows 2 due today')
+
+    await nav(owner, 'Dashboard').click()
+    const dueCard = owner.locator('section').filter({ has: owner.getByRole('heading', { name: /Your reminders for today/ }) })
+    await dueCard.getByTestId('reminder').filter({ hasText: 'Call Sam about prices' }).waitFor()
+    assert.equal(await dueCard.getByTestId('reminder').count(), 2)
+    await dueCard.getByTestId('reminder').filter({ hasText: 'Call Sam about prices' }).getByRole('button', { name: 'Done' }).click()
+    await dueCard.getByTestId('reminder').filter({ hasText: 'Call Sam about prices' }).waitFor({ state: 'detached' })
+    await dueCard.getByTestId('reminder').filter({ hasText: 'Weekly check-in' }).getByRole('button', { name: 'Done, next one' }).click()
+    await dueCard.getByText('Nothing to follow up today').waitFor()
+    assert.equal(sql("select due_on - current_date from public.reminders where title = 'Weekly check-in'"), '7')
+    assert.equal(sql("select count(*) from public.reminders where title = 'Call Sam about prices' and done_at is not null"), '1')
+    ok('on the dashboard the owner ticks both off: the one-off is closed, the weekly one moves to a week later')
+
+    await nav(owner, 'Calendar').click()
+    await owner.getByRole('heading', { name: 'Calendar' }).waitFor()
+    const openDay = async (page, iso) => {
+      for (let i = 0; i < 2; i++) {
+        const cell = page.locator(`[data-testid=calendar-day][data-date="${iso}"]`)
+        if (await cell.count()) return cell.click()
+        await page.getByRole('button', { name: 'Next month' }).click()
+      }
+      throw new Error(`day ${iso} not found`)
+    }
+    const taskDue = sql("select due_on from public.tasks limit 1")
+    await openDay(owner, taskDue)
+    await owner.getByTestId('day-task').filter({ hasText: 'Write a one-page plan' }).getByText('Sam Baker').waitFor()
+    await owner.getByRole('button', { name: 'Today' }).click()
+    await openDay(owner, localIso(3))
+    await owner.getByTestId('day-items').getByTestId('reminder').filter({ hasText: 'Book the workshop room' }).waitFor()
+    await owner.getByRole('button', { name: 'Today' }).click()
+    await openDay(owner, localIso(7))
+    await owner.getByTestId('day-items').getByTestId('reminder').filter({ hasText: 'Weekly check-in' }).waitFor()
+    await owner.getByRole('button', { name: 'Reminder on this day' }).click()
+    assert.equal(await owner.getByRole('dialog').getByLabel('When?').inputValue(), localIso(7))
+    await owner.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
+    await owner.getByRole('button', { name: 'Today' }).click()
+    await snap(owner, 'owner-calendar')
+    ok("the owner's calendar shows Sam's task on its due date and the reminders on theirs; a new reminder starts on the chosen day")
+
+    await nav(sam, 'Calendar').click()
+    await sam.getByRole('heading', { name: 'Calendar' }).waitFor()
+    await openDay(sam, taskDue)
+    await sam.getByTestId('day-task').filter({ hasText: 'Write a one-page plan' }).waitFor()
+    await sam.getByRole('button', { name: 'Today' }).click()
+    await openDay(sam, localIso(3))
+    await sam.getByText('Nothing on this day').waitFor()
+    assert.equal(await sam.getByRole('button', { name: /reminder/i }).count(), 0)
+    await snap(sam, 'participant-calendar')
+    ok("Sam's calendar shows Sam's own task, and none of the owner's reminders")
+
     // ---- Security: try every door, straight at the back end ----
-    section('7. Security (talking to the back end directly, skipping the screens)')
+    section('8. Security (talking to the back end directly, skipping the screens)')
     step = 0
     const samToken = (await signInApi('sam.b', SAM_NEW_PASSWORD)).data.access_token
     const ownerToken = (await signInApi('owner', OWNER_PASSWORD)).data.access_token
@@ -881,8 +959,18 @@ async function main() {
     assert.equal(sql(`select count(*) from public.poll_votes where poll_id = '${pollId}'`), '2')
     ok('nobody can vote in someone else\'s name or pick two on a one-choice poll; participants cannot create, close or delete polls; visitors see nothing')
 
+    // ---- Reminders ----
+    assert.deepEqual((await api('/rest/v1/reminders?select=id', { token: samToken })).data, [])
+    assert.ok(!(await api('/rest/v1/reminders?select=id')).ok)
+    assert.ok(!(await api('/rest/v1/reminders', { method: 'POST', token: samToken, body: { title: 'Mine', due_on: '2026-12-01' } })).ok)
+    const reminderId = sql("select id from public.reminders where title = 'Book the workshop room'")
+    assert.ok(!(await rpcCall('complete_reminder', samToken, { p_id: reminderId })).ok)
+    await api(`/rest/v1/reminders?id=eq.${reminderId}`, { method: 'DELETE', token: samToken })
+    assert.equal(sql(`select count(*) from public.reminders where id = '${reminderId}' and done_at is null`), '1')
+    ok("the owner's reminders are invisible to Sam (even the one about Sam), and Sam cannot add, tick off or delete any")
+
     // ---- Removing people ----
-    section('8. Blocking and deleting, with the real back end')
+    section('9. Blocking and deleting, with the real back end')
     step = 0
     const leeBefore = sql(`select count(*) from storage.objects where name like '${leeId}/%'`)
     assert.ok(Number(leeBefore) >= 1, 'Lee should have at least one stored file before deletion')
