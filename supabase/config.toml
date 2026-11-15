@@ -432,3 +432,7 @@ verify_jwt = false
 # Only signed-in callers reach this one; the database then checks they are the admin.
 [functions.invite-participant]
 verify_jwt = true
+
+# Only signed-in callers reach this one; the database then checks they are the admin.
+[functions.manage-account]
+verify_jwt = true

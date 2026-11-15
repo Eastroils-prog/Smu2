@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom'
 import type { Stage } from '../lib/supabase'
 import { Card, Empty, PageTitle, SectionTitle, StatusBadge } from '../features/shared/ui'
 import { useAuth } from './auth'
-import { dueLabel, isLate, progressOf, useStages, useSubmissions, useTasks } from './data'
+import { dueLabel, isLate, progressOf, useMilestones, useStages, useSubmissions, useTasks } from './data'
+import { AskForHelp, MyMilestones } from './People'
 
 /** Progress bar cut into one slice per stage. `value` is 0 to 1. */
 export function StageProgress({ value, stages }: { value: number; stages: Stage[] }) {
@@ -31,6 +32,7 @@ export function MyHome() {
   const tasks = useTasks()
   const submissions = useSubmissions()
   const stages = useStages()
+  const milestones = useMilestones()
   if (!profile) return null
 
   const all = tasks.data ?? []
@@ -46,13 +48,14 @@ export function MyHome() {
 
       <Card>
         <SectionTitle>Your verified progress</SectionTitle>
-        <StageProgress value={progressOf(profile, all, stageList)} stages={stageList} />
+        <StageProgress value={progressOf(profile, all, stageList, milestones.data ?? [])} stages={stageList} />
         {stage && (
           <p className="mt-3">
             You are in stage {stage.position} of {stageList.length}: <strong>{stage.name}</strong>
           </p>
         )}
-        <p className="mt-1 text-sm text-muted">The bar moves when the owner approves your work.</p>
+        <MyMilestones person={profile} />
+        <p className="mt-3 text-sm text-muted">The bar moves when the owner approves your work or ticks a milestone.</p>
       </Card>
 
       <Card>
@@ -75,6 +78,8 @@ export function MyHome() {
           </ul>
         )}
       </Card>
+
+      <AskForHelp person={profile} />
 
       {feedback && (
         <Card>

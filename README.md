@@ -19,9 +19,11 @@ and follow-ups.
   hosted project**.
 - Polls (owner asks, 2–10 choices, one or several picks, anonymous votes):
   **built and tested locally; database part applied to the hosted project**.
-- Not built yet: owner dashboard, private notes, milestones, reminders,
-  calendar, analytics. Those exist only in the sample. Messages refresh every
-  few seconds rather than instantly.
+- Owner dashboard, milestones, "ask for help", and blocking or deleting a
+  participant: **built and tested locally; database part and the
+  `manage-account` function applied to the hosted project**.
+- Not built yet: private notes, reminders, calendar, analytics. Messages
+  refresh every few seconds rather than instantly.
 
 Docs: [plan in plain words](docs/PRD.md) · [architecture](docs/ARCHITECTURE.md) ·
 [database design reference](docs/schema.sql)
@@ -56,6 +58,6 @@ Create the one administrator (once):
 Tests:
 
 ```
-npm run test:db                   # 132 database-level checks (pgTAP)
-npm run build && npm run test:real  # 66 end-to-end checks; WIPES local accounts
+npm run test:db                   # 160 database-level checks (pgTAP)
+npm run build && npm run test:real  # 77 end-to-end checks; WIPES local accounts
 ```

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { BrowserRouter, NavLink, Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
-import { CheckSquare, FileSpreadsheet, Home, LogOut, MessageCircle, PiggyBank, Sprout, User, Users, Vote } from 'lucide-react'
+import { CheckSquare, FileSpreadsheet, Home, LayoutDashboard, LogOut, MessageCircle, PiggyBank, Sprout, User, Users, Vote } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { formatDate } from '../lib/data'
 import { Avatar, Button, Card, Field, PageTitle, inputClass } from '../features/shared/ui'
@@ -14,6 +14,7 @@ import { MyHome } from './Home'
 import { MyMoney } from './Money'
 import { FilesPage } from './Files'
 import { PollsPage } from './Polls'
+import { OwnerDashboard } from './Dashboard'
 import { unreadTotal, useMessages, useSharedFiles, useStages, useTasks } from './data'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true } } })
@@ -53,11 +54,12 @@ function Gate() {
   if (!profile) return <Centered>Loading…</Centered>
   if (profile.status === 'invited') return <WelcomePage />
 
-  const home = profile.role === 'admin' ? '/admin/people' : '/app'
+  const home = profile.role === 'admin' ? '/admin' : '/app'
   return (
     <Routes>
       {profile.role === 'admin' ? (
         <Route element={<RealShell />}>
+          <Route path="/admin" element={<OwnerDashboard />} />
           <Route path="/admin/people" element={<OwnerPeople />} />
           <Route path="/admin/people/:id" element={<OwnerPerson />} />
           <Route path="/admin/tasks" element={<OwnerTasks />} />
@@ -101,6 +103,7 @@ function RealShell() {
   const filesToCheck = isAdmin ? (sharedFiles.data ?? []).filter((f) => f.status === 'pending').length : 0
   const items: { to: string; label: string; icon: ReactNode; end?: boolean; badge?: number }[] = isAdmin
     ? [
+        { to: '/admin', label: 'Dashboard', icon: <LayoutDashboard size={19} />, end: true },
         { to: '/admin/people', label: 'People', icon: <Users size={19} /> },
         { to: '/admin/tasks', label: 'Tasks', icon: <CheckSquare size={19} />, badge: toCheck },
         { to: '/admin/messages', label: 'Messages', icon: <MessageCircle size={19} />, badge: unread },

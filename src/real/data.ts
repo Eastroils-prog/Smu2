@@ -209,14 +209,72 @@ export function useSignedUrl(path: string, bucket: 'submissions' | 'shared' = 's
  * Verified progress, 0 to 1: stages already passed, plus the approved share of
  * the tasks in the current stage. Only work the owner approved counts.
  */
-export function progressOf(person: Pick<Profile, 'id' | 'current_stage_id' | 'status'>, tasks: Task[], stages: Stage[]): number {
+export function progressOf(
+  person: Pick<Profile, 'id' | 'current_stage_id' | 'status'>,
+  tasks: Task[],
+  stages: Stage[],
+  milestones: Milestone[] = [],
+): number {
   if (stages.length === 0) return 0
   if (person.status === 'completed') return 1
   const index = Math.max(0, stages.findIndex((s) => s.id === person.current_stage_id))
-  const mine = tasks.filter((t) => t.participant_id === person.id && t.stage_id === person.current_stage_id)
-  const share = mine.length ? mine.filter((t) => t.status === 'completed').length / mine.length : 0
-  return (index + share) / stages.length
+  const inStage = <T extends { participant_id: string; stage_id: string | null }>(list: T[]) =>
+    list.filter((x) => x.participant_id === person.id && x.stage_id === person.current_stage_id)
+  const myTasks = inStage(tasks)
+  const myMilestones = inStage(milestones)
+  const total = myTasks.length + myMilestones.length
+  const done = myTasks.filter((t) => t.status === 'completed').length + myMilestones.filter((m) => m.achieved_at).length
+  return (index + (total ? done / total : 0)) / stages.length
 }
+
+export interface Milestone {
+  id: string
+  participant_id: string
+  stage_id: string | null
+  title: string
+  achieved_at: string | null
+  created_at: string
+}
+
+export interface HelpRequest {
+  id: string
+  participant_id: string
+  body: string
+  created_at: string
+  resolved_at: string | null
+}
+
+export function useMilestones() {
+  return useQuery({
+    queryKey: ['milestones'],
+    queryFn: () =>
+      unwrap<Milestone[]>(supabase.from('milestones').select('id, participant_id, stage_id, title, achieved_at, created_at').order('created_at')),
+  })
+}
+
+export function useHelpRequests() {
+  return useQuery({
+    queryKey: ['help'],
+    refetchInterval: 30_000,
+    queryFn: () =>
+      unwrap<HelpRequest[]>(
+        supabase.from('help_requests').select('id, participant_id, body, created_at, resolved_at').order('created_at', { ascending: false }),
+      ),
+  })
+}
+
+export function useSettings() {
+  return useQuery({
+    queryKey: ['settings'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const rows = await unwrap<{ inactivity_days: number }[]>(supabase.from('app_settings').select('inactivity_days'))
+      return { inactivityDays: rows[0]?.inactivity_days ?? 7 }
+    },
+  })
+}
+
+export const daysSince = (iso: string | null) => (iso ? Math.floor((Date.now() - Date.parse(iso)) / 86_400_000) : Infinity)
 
 const today = () => new Date().toISOString().slice(0, 10)
 

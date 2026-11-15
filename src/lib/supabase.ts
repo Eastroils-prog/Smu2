@@ -30,6 +30,7 @@ export interface Profile {
   status: 'invited' | 'active' | 'completed'
   joined_at: string | null
   archived_at: string | null
+  blocked_at: string | null
   last_active_at: string | null
 }
 
@@ -50,4 +51,4 @@ export interface Invitation {
 }
 
 export const PROFILE_COLUMNS =
-  'id, role, username, email, full_name, business_idea, current_goals, current_stage_id, status, joined_at, archived_at, last_active_at'
+  'id, role, username, email, full_name, business_idea, current_goals, current_stage_id, status, joined_at, archived_at, blocked_at, last_active_at'

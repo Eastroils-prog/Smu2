@@ -65,7 +65,7 @@ async function main() {
   }
 
   // ---- Clean start: no accounts, no mail, one owner created the documented way ----
-  sql('delete from public.polls; delete from public.shared_files; delete from public.finance_entries; delete from public.messages; delete from public.tasks; delete from public.participant_invitations; delete from auth.users; delete from private.sign_in_attempts;')
+  sql('delete from public.help_requests; delete from public.milestones; delete from public.polls; delete from public.shared_files; delete from public.finance_entries; delete from public.messages; delete from public.tasks; delete from public.participant_invitations; delete from auth.users; delete from private.sign_in_attempts;')
   await fetch(`${MAIL}/api/v1/messages`, { method: 'DELETE' })
 
   const created = await api('/auth/v1/admin/users', {
@@ -144,9 +144,11 @@ async function main() {
 
     await owner.getByLabel('Password', { exact: true }).fill(OWNER_PASSWORD)
     await owner.getByRole('button', { name: 'Sign in' }).click()
-    await owner.getByRole('heading', { name: 'People' }).waitFor()
+    await owner.getByRole('heading', { name: 'Dashboard' }).waitFor()
+    await owner.getByText('Nobody needs you right now').waitFor()
+    await owner.getByRole('navigation').getByRole('link', { name: /^People/ }).click()
     await owner.getByText('Nobody has joined yet').waitFor()
-    ok('the owner signs in with a username and password')
+    ok('the owner signs in with a username and password and lands on the dashboard')
 
     const invite = async (name, email) => {
       await owner.getByRole('button', { name: 'Invite a person' }).click()
@@ -604,8 +606,61 @@ async function main() {
     assert.equal(await sam.getByTestId('poll').filter({ hasText: 'Which topics' }).count(), 0)
     ok('the owner deletes a poll and it disappears for everyone')
 
+    // ---- Dashboard, milestones, help ----
+    section('6. Dashboard, milestones and asking for help, with the real back end')
+    step = 0
+    const stat = (page, label) => page.getByTestId('stat').filter({ hasText: label }).locator('dd')
+    await nav(sam, 'Home').click()
+    await sam.getByRole('button', { name: 'Ask for help' }).click()
+    await sam.getByRole('dialog').getByRole('button', { name: 'Send request' }).click()
+    await sam.getByRole('dialog').getByRole('alert').getByText('Write what you need help with').waitFor()
+    await sam.getByLabel('What do you need help with?').fill('How do I set my prices for groups of dogs?')
+    await sam.getByRole('dialog').getByRole('button', { name: 'Send request' }).click()
+    await sam.getByText('Help requested').waitFor()
+    assert.equal(await sam.getByRole('button', { name: 'Ask for help' }).count(), 0)
+    ok('Sam asks for help and sees it is waiting; the button is gone until the owner handles it')
+
+    await nav(owner, 'Dashboard').click()
+    await owner.getByRole('heading', { name: 'Dashboard' }).waitFor()
+    await owner.getByTestId('attention-row').filter({ hasText: 'Sam Baker' }).getByText('Asked for help').waitFor()
+    assert.equal(await stat(owner, 'Active people').textContent(), '2')
+    assert.equal(await stat(owner, 'Help requests').textContent(), '1')
+    assert.equal(await stat(owner, 'Work to check').textContent(), '0')
+    assert.equal(await owner.getByTestId('attention-row').filter({ hasText: 'Lee Park' }).count(), 0)
+    await snap(owner, 'owner-dashboard')
+    ok('the dashboard counts 2 active people and 1 help request, and lists Sam (not Lee) under "Needs your attention"')
+
+    await owner.getByTestId('attention-row').filter({ hasText: 'Sam Baker' }).click()
+    await owner.getByTestId('help-request').getByText('groups of dogs').waitFor()
+    await owner.getByTestId('help-request').getByRole('button', { name: 'Mark as handled' }).click()
+    await owner.getByTestId('help-request').waitFor({ state: 'detached' })
+    ok("the owner opens Sam's page from the dashboard, reads the request and marks it handled")
+
+    await owner.locator('[role=progressbar][aria-valuenow="33"]').waitFor()
+    await owner.getByLabel('New milestone').fill('First paying customer')
+    await owner.getByRole('button', { name: /Add/ }).click()
+    await owner.getByTestId('milestone').filter({ hasText: 'First paying customer' }).waitFor()
+    await owner.locator('[role=progressbar][aria-valuenow="25"]').waitFor()
+    await sam.reload()
+    await sam.getByTestId('milestone').filter({ hasText: 'First paying customer' }).getByLabel('Not reached yet').waitFor()
+    await sam.locator('[role=progressbar][aria-valuenow="25"]').waitFor()
+    await sam.getByRole('button', { name: 'Ask for help' }).waitFor()
+    ok('the owner adds a milestone; Sam sees it, progress becomes 25% (1 of 2 things in the stage done), and Sam can ask for help again')
+
+    await owner.getByTestId('milestone').filter({ hasText: 'First paying customer' }).getByRole('button', { name: /^First paying customer/ }).click()
+    await owner.getByTestId('milestone').getByText('Reached').waitFor()
+    await owner.locator('[role=progressbar][aria-valuenow="33"]').waitFor()
+    await snap(owner, 'owner-person-milestones')
+    await sam.reload()
+    await sam.getByTestId('milestone').filter({ hasText: 'First paying customer' }).getByLabel('Reached').waitFor()
+    await sam.locator('[role=progressbar][aria-valuenow="33"]').waitFor()
+    await snap(sam, 'participant-home-milestone')
+    await lee.reload()
+    assert.equal(await lee.getByTestId('milestone').count(), 0)
+    ok("the owner ticks the milestone: progress returns to 33% for both; Lee sees none of Sam's milestones")
+
     // ---- Security: try every door, straight at the back end ----
-    section('6. Security (talking to the back end directly, skipping the screens)')
+    section('7. Security (talking to the back end directly, skipping the screens)')
     step = 0
     const samToken = (await signInApi('sam.b', SAM_NEW_PASSWORD)).data.access_token
     const ownerToken = (await signInApi('owner', OWNER_PASSWORD)).data.access_token
@@ -825,6 +880,71 @@ async function main() {
     assert.equal(sql(`select count(*) from public.polls where id = '${pollId}'`), '1')
     assert.equal(sql(`select count(*) from public.poll_votes where poll_id = '${pollId}'`), '2')
     ok('nobody can vote in someone else\'s name or pick two on a one-choice poll; participants cannot create, close or delete polls; visitors see nothing')
+
+    // ---- Removing people ----
+    section('8. Blocking and deleting, with the real back end')
+    step = 0
+    const leeBefore = sql(`select count(*) from storage.objects where name like '${leeId}/%'`)
+    assert.ok(Number(leeBefore) >= 1, 'Lee should have at least one stored file before deletion')
+
+    await nav(owner, 'People').click()
+    await owner.getByRole('link', { name: /Sam Baker/ }).click()
+    await owner.getByRole('button', { name: 'Block sign-in' }).click()
+    await owner.getByRole('status').getByText('Blocked').waitFor()
+    await owner.getByText('Blocked since').waitFor()
+    assert.equal(await owner.getByRole('link', { name: 'Message', exact: true }).count(), 0)
+    assert.equal((await signInApi('sam.b', SAM_NEW_PASSWORD)).status, 401)
+    assert.ok(!(await rpcCall('send_message', samToken, { p_to: ownerId, p_body: 'still here?' })).ok)
+    assert.ok(!(await rpcCall('send_message', ownerToken, { p_to: samId, p_body: 'hello?' })).ok)
+    await sam.getByRole('button', { name: 'Sign out' }).click()
+    await sam.getByLabel('Username').fill('sam.b')
+    await sam.getByLabel('Password', { exact: true }).fill(SAM_NEW_PASSWORD)
+    await sam.getByRole('button', { name: 'Sign in' }).click()
+    await sam.getByRole('alert').getByText('do not match').waitFor()
+    await snap(owner, 'owner-person-blocked')
+    ok('the owner blocks Sam: Sam cannot sign in, cannot send with an old session, and nobody can message Sam')
+
+    await owner.getByRole('button', { name: 'Unblock' }).click()
+    await owner.getByRole('status').getByText('Unblocked').waitFor()
+    sql('delete from private.sign_in_attempts;')
+    assert.equal((await signInApi('sam.b', SAM_NEW_PASSWORD)).status, 200)
+    assert.equal(sql('select count(*) from public.tasks'), '1')
+    ok("the owner unblocks Sam: Sam can sign in again and nothing of Sam's was lost")
+
+    await nav(owner, 'People').click()
+    await owner.getByRole('link', { name: /Lee Park/ }).click()
+    await owner.getByRole('button', { name: 'Delete for good' }).click()
+    const confirmBox = owner.getByLabel(/To confirm, type their full name/)
+    await confirmBox.fill('Lee')
+    assert.equal(await owner.getByRole('button', { name: 'Delete Lee for good' }).isDisabled(), true)
+    await confirmBox.fill('Lee Park')
+    await owner.getByRole('button', { name: 'Delete Lee for good' }).click()
+    await owner.getByRole('heading', { name: 'People' }).waitFor()
+    await owner.getByRole('link', { name: /Sam Baker/ }).waitFor()
+    assert.equal(await owner.getByRole('link', { name: /Lee Park/ }).count(), 0)
+    ok('deleting needs the full name typed in; then Lee is gone from the People list')
+
+    assert.equal(sql(`select count(*) from auth.users where id = '${leeId}'`), '0')
+    assert.equal(sql(`select count(*) from public.profiles where id = '${leeId}'`), '0')
+    assert.equal(sql(`select count(*) from public.messages where sender_id = '${leeId}' or recipient_id = '${leeId}'`), '0')
+    assert.equal(sql(`select count(*) from public.poll_votes where voter_id = '${leeId}'`), '0')
+    assert.equal(sql(`select count(*) from storage.objects where name like '${leeId}/%'`), '0')
+    assert.equal((await signInApi('lee.p', LEE_PASSWORD)).status, 401)
+    assert.ok(!(await api('/rest/v1/profiles?select=id', { token: leeToken })).data?.length)
+    ok("Lee's account, messages, votes and stored files are erased, and Lee cannot sign in")
+
+    for (const action of ['block', 'delete']) {
+      const res = await api('/functions/v1/manage-account', { method: 'POST', token: samToken, body: { action, profile_id: ownerId } })
+      assert.equal(res.status, 403)
+    }
+    assert.equal((await api('/functions/v1/manage-account', { method: 'POST', token: ownerToken, body: { action: 'delete', profile_id: ownerId } })).status, 404)
+    assert.equal(sql(`select count(*) from auth.users where id = '${ownerId}'`), '1')
+    ok("a participant cannot block or delete anyone, and nobody can block or delete the owner's account")
+
+    await nav(owner, 'People').click()
+    const leeAgain = await inviteAndGetLink('Lee Park', 'lee@example.com')
+    assert.match(leeAgain, /verify/)
+    ok('the same e-mail address can be invited again after deletion')
 
     const bundle = execFileSync('sh', ['-c', 'cat dist/assets/*.js'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
     assert.ok(!bundle.includes(SERVICE) && !bundle.includes('service_role'))
