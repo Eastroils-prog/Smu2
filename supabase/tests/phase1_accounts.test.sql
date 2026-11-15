@@ -5,9 +5,10 @@ create extension if not exists pgtap with schema extensions;
 select plan(38);
 
 -- Start from an empty programme. Everything in this file is rolled back at the end.
-delete from public.participant_invitations;
-delete from auth.users;
-delete from private.sign_in_attempts;
+delete from public.polls; delete from public.shared_files; delete from public.finance_entries;
+delete from public.messages; delete from public.tasks; delete from public.participant_invitations;
+delete from auth.users; delete from private.sign_in_attempts;
+
 
 -- Pretend to be a signed-in user (or a visitor when uid is null).
 create function pg_temp.act_as(uid uuid) returns void language plpgsql as $$

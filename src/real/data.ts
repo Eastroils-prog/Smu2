@@ -130,13 +130,73 @@ export function useDirectory() {
   })
 }
 
-/** A short-lived private link to one stored file. */
-export function useSignedUrl(path: string) {
+export interface FinanceEntry {
+  id: string
+  participant_id: string
+  month: string
+  money_in: number
+  money_out: number
+  note: string | null
+}
+
+export interface SharedFile {
+  id: string
+  uploader_id: string
+  title: string
+  file_name: string
+  storage_path: string
+  size_bytes: number
+  status: 'pending' | 'approved' | 'rejected'
+  review_note: string | null
+  created_at: string
+}
+
+/** Money months this person may see: their own, or everyone's for the owner. Oldest first. */
+export function useFinance() {
   return useQuery({
-    queryKey: ['signed-url', path],
+    queryKey: ['finance'],
+    queryFn: async () => {
+      const rows = await unwrap<FinanceEntry[]>(
+        supabase.from('finance_entries').select('id, participant_id, month, money_in, money_out, note').order('month'),
+      )
+      // The database sends exact decimals as text; turn them into numbers once, here.
+      return rows.map((r) => ({ ...r, money_in: Number(r.money_in), money_out: Number(r.money_out) }))
+    },
+  })
+}
+
+export function useSharedFiles() {
+  return useQuery({
+    queryKey: ['shared-files'],
+    refetchInterval: 30_000,
+    queryFn: () =>
+      unwrap<SharedFile[]>(
+        supabase
+          .from('shared_files')
+          .select('id, uploader_id, title, file_name, storage_path, size_bytes, status, review_note, created_at')
+          .order('created_at', { ascending: false }),
+      ),
+  })
+}
+
+export const money = (amount: number) =>
+  new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR', maximumFractionDigits: amount % 1 === 0 ? 0 : 2 }).format(amount)
+
+export function monthLabel(month: string, long = false): string {
+  return new Date(`${month.slice(0, 7)}-01T12:00:00Z`).toLocaleDateString(undefined, {
+    month: long ? 'long' : 'short',
+    year: long ? 'numeric' : '2-digit',
+    timeZone: 'UTC',
+  })
+}
+
+/** A short-lived private link to one stored file. */
+export function useSignedUrl(path: string, bucket: 'submissions' | 'shared' = 'submissions') {
+  return useQuery({
+    queryKey: ['signed-url', bucket, path],
     staleTime: 50 * 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase.storage.from('submissions').createSignedUrl(path, 3600)
+      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600)
       if (error) throw new Error(error.message)
       return data.signedUrl
     },
