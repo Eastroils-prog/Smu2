@@ -296,6 +296,19 @@ export function useReminders(enabled = true) {
   })
 }
 
+/** How many days ahead a task deadline starts showing up as a reminder. */
+export const DEADLINE_WINDOW_DAYS = 3
+
+/** Tasks still waiting for work whose deadline is late or within the window. Soonest first. */
+export function upcomingDeadlines(tasks: Task[], today: string, withinDays = DEADLINE_WINDOW_DAYS): Task[] {
+  const limit = new Date(`${today}T00:00:00Z`)
+  limit.setUTCDate(limit.getUTCDate() + withinDays)
+  const last = limit.toISOString().slice(0, 10)
+  return tasks
+    .filter((t) => t.due_on && t.due_on <= last && ['not_started', 'in_progress', 'needs_revision'].includes(t.status))
+    .sort((a, b) => (a.due_on ?? '').localeCompare(b.due_on ?? ''))
+}
+
 /** Today's date as YYYY-MM-DD in the viewer's own time zone. */
 export function localToday(): string {
   const d = new Date()

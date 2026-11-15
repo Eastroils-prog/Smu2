@@ -16,8 +16,8 @@ import { FilesPage } from './Files'
 import { PollsPage } from './Polls'
 import { OwnerDashboard } from './Dashboard'
 import { CalendarPage } from './Calendar'
-import { RemindersPage } from './Reminders'
-import { localToday, unreadTotal, useMessages, useReminders, useSharedFiles, useStages, useTasks } from './data'
+import { RemindersPage, useDueCount } from './Reminders'
+import { unreadTotal, useMessages, useSharedFiles, useStages, useTasks } from './data'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true } } })
 
@@ -83,6 +83,7 @@ function Gate() {
           <Route path="/app/files" element={<FilesPage />} />
           <Route path="/app/polls" element={<PollsPage />} />
           <Route path="/app/calendar" element={<CalendarPage />} />
+          <Route path="/app/reminders" element={<RemindersPage />} />
           <Route path="/app/profile" element={<MyProfilePage />} />
         </Route>
       )}
@@ -101,12 +102,11 @@ function RealShell() {
   const messages = useMessages()
   const tasks = useTasks()
   const sharedFiles = useSharedFiles()
-  const reminders = useReminders(profile?.role === 'admin')
+  const remindersDue = useDueCount()
   if (!profile) return null
   const isAdmin = profile.role === 'admin'
   const unread = unreadTotal(messages.data ?? [], profile.id)
   const toCheck = isAdmin ? (tasks.data ?? []).filter((t) => t.status === 'submitted').length : 0
-  const remindersDue = isAdmin ? (reminders.data ?? []).filter((r) => r.due_on <= localToday()).length : 0
   const filesToCheck = isAdmin ? (sharedFiles.data ?? []).filter((f) => f.status === 'pending').length : 0
   const items: { to: string; label: string; icon: ReactNode; end?: boolean; badge?: number }[] = isAdmin
     ? [
@@ -128,6 +128,7 @@ function RealShell() {
         { to: '/app/files', label: 'Files', icon: <FileSpreadsheet size={19} /> },
         { to: '/app/polls', label: 'Polls', icon: <Vote size={19} /> },
         { to: '/app/calendar', label: 'Calendar', icon: <CalendarDays size={19} /> },
+        { to: '/app/reminders', label: 'Reminders', icon: <Bell size={19} />, badge: remindersDue },
         { to: '/app/profile', label: 'Profile', icon: <User size={19} /> },
       ]
 

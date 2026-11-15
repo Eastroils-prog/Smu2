@@ -25,7 +25,7 @@ export function CalendarPage() {
   const { profile } = useAuth()
   const isOwner = profile?.role === 'admin'
   const tasks = useTasks()
-  const reminders = useReminders(isOwner)
+  const reminders = useReminders()
   const people = usePeople()
   const today = localToday()
   const [year, setYear] = useState(Number(today.slice(0, 4)))
@@ -33,6 +33,7 @@ export function CalendarPage() {
   const [selected, setSelected] = useState(today)
   const [adding, setAdding] = useState(false)
   if (!profile) return null
+  const canAdd = !profile.archived_at
 
   const nameOf = (id: string | null) => (id ? people.data?.find((p) => p.id === id)?.full_name : undefined)
   const visiblePerson = (id: string) => {
@@ -45,7 +46,7 @@ export function CalendarPage() {
   const byDay = new Map<string, Item[]>()
   const add = (iso: string, item: Item) => byDay.set(iso, [...(byDay.get(iso) ?? []), item])
   for (const t of tasks.data ?? []) if (t.due_on && visiblePerson(t.participant_id)) add(t.due_on, { kind: 'task', task: t })
-  if (isOwner) for (const r of reminders.data ?? []) add(r.due_on, { kind: 'reminder', reminder: r })
+  for (const r of reminders.data ?? []) add(r.due_on, { kind: 'reminder', reminder: r })
 
   const cells = gridFor(year, month)
   const monthName = new Date(Date.UTC(year, month, 1)).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })
@@ -74,9 +75,9 @@ export function CalendarPage() {
     <>
       <PageTitle
         title="Calendar"
-        subtitle={isOwner ? 'Task deadlines for everyone, and your reminders.' : 'When your tasks are due.'}
+        subtitle={isOwner ? 'Task deadlines for everyone, and your reminders.' : 'When your tasks are due, and your reminders.'}
         action={
-          isOwner ? (
+          canAdd ? (
             <Button onClick={() => setAdding(true)}>
               <Plus size={17} />
               New reminder
@@ -100,7 +101,7 @@ export function CalendarPage() {
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
           <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-accent" />Task due</span>
           <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-danger" />Late</span>
-          {isOwner && <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-warn" />Reminder</span>}
+          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-warn" />Your reminder</span>
         </div>
 
         <div className="grid grid-cols-7 text-center text-xs font-semibold tracking-wide text-muted uppercase" aria-hidden="true">
@@ -155,7 +156,7 @@ export function CalendarPage() {
       <Card>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-semibold" data-testid="selected-day">{selectedLabel}</h2>
-          {isOwner && (
+          {canAdd && (
             <Button small variant="ghost" onClick={() => setAdding(true)}>
               <Plus size={15} />
               Reminder on this day
@@ -184,7 +185,7 @@ export function CalendarPage() {
         )}
       </Card>
 
-      {isOwner && <p className="flex items-center gap-1.5 text-sm text-muted"><Bell size={14} />Reminders show only on your calendar, never on anyone else’s.</p>}
+      <p className="flex items-center gap-1.5 text-sm text-muted"><Bell size={14} />Your reminders show only on your own calendar, never on anyone else’s.</p>
       {adding && <NewReminderModal startDate={selected} onClose={() => setAdding(false)} />}
     </>
   )

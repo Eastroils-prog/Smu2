@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Bell, Plus, Repeat, Trash2 } from 'lucide-react'
+import { Bell, CalendarClock, Plus, Repeat, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { Badge, Button, Card, Empty, Field, Modal, PageTitle, SectionTitle, inputClass } from '../features/shared/ui'
+import { Badge, Button, Card, Empty, Field, Modal, PageTitle, SectionTitle, StatusBadge, inputClass } from '../features/shared/ui'
+import { useAuth } from './auth'
 import { LoadError } from './Tasks'
-import { localToday, usePeople, useReminders, type Reminder } from './data'
+import {
+  DEADLINE_WINDOW_DAYS, localToday, upcomingDeadlines, usePeople, useReminders, useTasks, type Reminder, type Task,
+} from './data'
 
 const REPEAT_LABEL = { none: '', weekly: 'Every week', monthly: 'Every month' } as const
 
@@ -19,15 +22,76 @@ export function dayLabel(iso: string, today = localToday()): string {
   return new Date(`${iso}T12:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' })
 }
 
-/** One reminder with its Done and Delete buttons. */
+/** "Today" reads as "today" mid-sentence; weekday and month names keep their capital. */
+const inSentence = (label: string) => (/^(Today|Tomorrow|Yesterday|\d+ days ago)$/.test(label) ? label.toLowerCase() : label)
+
+function dueTone(iso: string, today: string) {
+  if (iso < today) return { icon: 'bg-danger-soft text-danger', text: 'font-semibold text-danger' }
+  if (iso === today) return { icon: 'bg-warn-soft text-warn', text: 'font-semibold text-warn' }
+  return { icon: 'bg-sunken text-muted', text: '' }
+}
+
+/**
+ * The people whose tasks the viewer may be reminded about: everyone active
+ * for the owner (blocked and archived people are left out); a participant only
+ * ever receives their own tasks from the database.
+ */
+function useDeadlines() {
+  const { profile } = useAuth()
+  const tasks = useTasks()
+  const people = usePeople()
+  const isOwner = profile?.role === 'admin'
+  const today = localToday()
+  const active = (id: string) => {
+    if (!isOwner) return true
+    const p = people.data?.find((x) => x.id === id)
+    return !!p && !p.blocked_at && !p.archived_at
+  }
+  const list = upcomingDeadlines((tasks.data ?? []).filter((t) => active(t.participant_id)), today)
+  return { list, loading: tasks.isLoading, error: tasks.isError, nameOf: (id: string) => people.data?.find((p) => p.id === id)?.full_name }
+}
+
+/** How many reminders need attention today: your own due today or late, plus task deadlines today or late. */
+export function useDueCount(): number {
+  const reminders = useReminders()
+  const { list } = useDeadlines()
+  const today = localToday()
+  return (reminders.data ?? []).filter((r) => r.due_on <= today).length + list.filter((t) => (t.due_on ?? '') <= today).length
+}
+
+/** An automatic reminder: a task whose deadline is close or has passed. */
+function DeadlineRow({ task, personName }: { task: Task; personName?: string }) {
+  const { profile } = useAuth()
+  const today = localToday()
+  const tone = dueTone(task.due_on ?? today, today)
+  const to = profile?.role === 'admin' ? `/admin/people/${task.participant_id}` : '/app/tasks'
+  return (
+    <li className="py-3" data-testid="deadline">
+      <Link to={to} className="flex flex-wrap items-start gap-3 hover:opacity-80">
+        <span className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${tone.icon}`}>
+          <CalendarClock size={15} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-medium break-words">{task.title}</span>
+          <span className="flex flex-wrap gap-x-2 text-sm text-muted">
+            <span className={tone.text}>{task.due_on && task.due_on < today ? `Was due ${inSentence(dayLabel(task.due_on, today))}` : `Due ${inSentence(dayLabel(task.due_on ?? today, today))}`}</span>
+            {personName && <span>· {personName}</span>}
+          </span>
+        </span>
+        <StatusBadge status={task.status} />
+      </Link>
+    </li>
+  )
+}
+
+/** One of your own reminders, with its Done and Delete buttons. */
 export function ReminderRow({ reminder, personName }: { reminder: Reminder; personName?: string }) {
   const client = useQueryClient()
   const [busy, setBusy] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState('')
   const today = localToday()
-  const overdue = reminder.due_on < today
-  const dueToday = reminder.due_on === today
+  const tone = dueTone(reminder.due_on, today)
 
   const run = async (work: PromiseLike<{ error: { message: string } | null }>) => {
     setBusy(true)
@@ -41,13 +105,13 @@ export function ReminderRow({ reminder, personName }: { reminder: Reminder; pers
   return (
     <li className="flex flex-col gap-2 py-3" data-testid="reminder">
       <div className="flex flex-wrap items-start gap-3">
-        <span className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${overdue ? 'bg-danger-soft text-danger' : dueToday ? 'bg-warn-soft text-warn' : 'bg-sunken text-muted'}`}>
+        <span className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${tone.icon}`}>
           <Bell size={15} />
         </span>
         <div className="min-w-0 flex-1">
           <p className="font-medium break-words">{reminder.title}</p>
           <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted">
-            <span className={overdue ? 'font-semibold text-danger' : dueToday ? 'font-semibold text-warn' : ''}>{dayLabel(reminder.due_on, today)}</span>
+            <span className={tone.text}>{dayLabel(reminder.due_on, today)}</span>
             {personName && <span>· {personName}</span>}
             {reminder.repeats !== 'none' && (
               <span className="inline-flex items-center gap-1">· <Repeat size={13} />{REPEAT_LABEL[reminder.repeats]}</span>
@@ -79,9 +143,11 @@ export function ReminderRow({ reminder, personName }: { reminder: Reminder; pers
 }
 
 export function NewReminderModal({ onClose, fixedPersonId, startDate }: { onClose: () => void; fixedPersonId?: string; startDate?: string }) {
+  const { profile } = useAuth()
+  const isOwner = profile?.role === 'admin'
   const client = useQueryClient()
   const people = usePeople()
-  const choices = (people.data ?? []).filter((p) => p.status === 'active')
+  const choices = (people.data ?? []).filter((p) => p.status === 'active' && !p.blocked_at)
   const [title, setTitle] = useState('')
   const [personId, setPersonId] = useState(fixedPersonId ?? '')
   const [dueOn, setDueOn] = useState(startDate ?? localToday())
@@ -105,7 +171,7 @@ export function NewReminderModal({ onClose, fixedPersonId, startDate }: { onClos
           setError('')
           const { error: failed } = await supabase.from('reminders').insert({
             title: title.trim(),
-            participant_id: personId || null,
+            participant_id: isOwner && personId ? personId : null,
             due_on: dueOn,
             repeats,
             note: note.trim() || null,
@@ -120,7 +186,14 @@ export function NewReminderModal({ onClose, fixedPersonId, startDate }: { onClos
         }}
       >
         <Field label="What should you remember?" htmlFor="reminder-title">
-          <input id="reminder-title" maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="For example: call about the pricing plan" className={inputClass} />
+          <input
+            id="reminder-title"
+            maxLength={200}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={isOwner ? 'For example: call about the pricing plan' : 'For example: ask three shops about prices'}
+            className={inputClass}
+          />
         </Field>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="When?" htmlFor="reminder-date">
@@ -134,7 +207,7 @@ export function NewReminderModal({ onClose, fixedPersonId, startDate }: { onClos
             </select>
           </Field>
         </div>
-        {!fixedPersonId && (
+        {isOwner && !fixedPersonId && (
           <Field label="About someone? (optional)" htmlFor="reminder-person">
             <select id="reminder-person" value={personId} onChange={(e) => setPersonId(e.target.value)} className={inputClass}>
               <option value="">Nobody in particular</option>
@@ -145,7 +218,7 @@ export function NewReminderModal({ onClose, fixedPersonId, startDate }: { onClos
         <Field label="Note (optional)" htmlFor="reminder-note">
           <textarea id="reminder-note" rows={2} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} className={inputClass} />
         </Field>
-        <p className="text-sm text-muted">Only you can see reminders, even ones about a person.</p>
+        <p className="text-sm text-muted">Only you can see your reminders{isOwner ? ', even ones about a person' : ''}.</p>
         {error && <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
         <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save reminder'}</Button>
       </form>
@@ -154,8 +227,11 @@ export function NewReminderModal({ onClose, fixedPersonId, startDate }: { onClos
 }
 
 export function RemindersPage() {
+  const { profile } = useAuth()
+  const isOwner = profile?.role === 'admin'
   const reminders = useReminders()
   const people = usePeople()
+  const deadlines = useDeadlines()
   const [adding, setAdding] = useState(false)
   const today = localToday()
   const all = reminders.data ?? []
@@ -165,25 +241,50 @@ export function RemindersPage() {
     { title: 'Today', list: all.filter((r) => r.due_on === today) },
     { title: 'Coming up', list: all.filter((r) => r.due_on > today) },
   ]
+  const canAdd = !profile?.archived_at
 
   return (
     <>
       <PageTitle
         title="Reminders"
-        subtitle="Your own follow-ups. Only you can see them."
+        subtitle={isOwner ? 'Task deadlines for everyone, and your own follow-ups. Only you see this page.' : 'Your task deadlines, and your own reminders. Only you see this page.'}
         action={
-          <Button onClick={() => setAdding(true)}>
-            <Plus size={17} />
-            New reminder
-          </Button>
+          canAdd ? (
+            <Button onClick={() => setAdding(true)}>
+              <Plus size={17} />
+              New reminder
+            </Button>
+          ) : undefined
         }
       />
+
+      <Card>
+        <SectionTitle>
+          Task deadlines <span className="font-sans text-sm font-normal text-muted">({deadlines.list.length})</span>
+        </SectionTitle>
+        <p className="-mt-2 mb-1 text-sm text-muted">
+          These appear by themselves {DEADLINE_WINDOW_DAYS} days before a deadline and go away once the work is handed in.
+        </p>
+        {deadlines.error ? (
+          <LoadError />
+        ) : deadlines.loading ? (
+          <Empty>Loading…</Empty>
+        ) : deadlines.list.length === 0 ? (
+          <Empty>No deadlines in the next {DEADLINE_WINDOW_DAYS} days.</Empty>
+        ) : (
+          <ul className="flex flex-col divide-y divide-line">
+            {deadlines.list.map((t) => <DeadlineRow key={t.id} task={t} personName={isOwner ? deadlines.nameOf(t.participant_id) : undefined} />)}
+          </ul>
+        )}
+      </Card>
+
+      <h2 className="text-base font-semibold">Your reminders</h2>
       {reminders.isError ? (
         <LoadError />
       ) : reminders.isLoading ? (
         <Empty>Loading…</Empty>
       ) : all.length === 0 ? (
-        <Empty>No reminders. Tap “New reminder” to add one.</Empty>
+        <Empty>No reminders of your own. Tap “New reminder” to add one.</Empty>
       ) : (
         groups.map((g) =>
           g.list.length === 0 ? null : (
@@ -199,32 +300,42 @@ export function RemindersPage() {
         )
       )}
       <p className="text-sm text-muted">
-        Tip: you can also see your reminders on the <Link to="/admin/calendar" className="font-medium text-accent-strong">calendar</Link>.
+        Tip: your reminders also show on your{' '}
+        <Link to={isOwner ? '/admin/calendar' : '/app/calendar'} className="font-medium text-accent-strong">calendar</Link>.
       </p>
       {adding && <NewReminderModal onClose={() => setAdding(false)} />}
     </>
   )
 }
 
-/** For the dashboard: reminders due today or late. */
+/** For the dashboard and the participant's Home: what needs doing today. */
 export function DueReminders() {
+  const { profile } = useAuth()
+  const isOwner = profile?.role === 'admin'
   const reminders = useReminders()
   const people = usePeople()
+  const deadlines = useDeadlines()
   const today = localToday()
   const due = (reminders.data ?? []).filter((r) => r.due_on <= today)
+  const dueTasks = deadlines.list.filter((t) => (t.due_on ?? '') <= today)
+  const soonTasks = deadlines.list.filter((t) => (t.due_on ?? '') > today)
   const nameOf = (id: string | null) => (id ? people.data?.find((p) => p.id === id)?.full_name : undefined)
+  const count = due.length + dueTasks.length
+
   return (
     <Card>
-      <SectionTitle action={<Link to="/admin/reminders" className="text-sm font-medium text-accent-strong">All reminders</Link>}>
-        Your reminders for today {due.length > 0 && <Badge tone="warn">{due.length}</Badge>}
+      <SectionTitle action={<Link to={isOwner ? '/admin/reminders' : '/app/reminders'} className="text-sm font-medium text-accent-strong">All reminders</Link>}>
+        Reminders for today {count > 0 && <Badge tone="warn">{count}</Badge>}
       </SectionTitle>
-      {reminders.isLoading ? (
+      {reminders.isLoading || deadlines.loading ? (
         <Empty>Loading…</Empty>
-      ) : due.length === 0 ? (
+      ) : count === 0 && soonTasks.length === 0 ? (
         <Empty>Nothing to follow up today.</Empty>
       ) : (
         <ul className="-my-3 flex flex-col divide-y divide-line">
+          {dueTasks.map((t) => <DeadlineRow key={t.id} task={t} personName={isOwner ? deadlines.nameOf(t.participant_id) : undefined} />)}
           {due.map((r) => <ReminderRow key={r.id} reminder={r} personName={nameOf(r.participant_id)} />)}
+          {soonTasks.map((t) => <DeadlineRow key={t.id} task={t} personName={isOwner ? deadlines.nameOf(t.participant_id) : undefined} />)}
         </ul>
       )}
     </Card>
