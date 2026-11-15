@@ -6,7 +6,8 @@ import { PROFILE_COLUMNS, supabase, type Invitation, type Profile, type Stage } 
 import { formatDate } from '../lib/data'
 import { Avatar, Badge, Button, Card, Empty, Field, Modal, PageTitle, SectionTitle, inputClass } from '../features/shared/ui'
 import { callAsMe } from './auth'
-import { progressOf, usePeople, useStages, useSubmissions, useTasks } from './data'
+import { progressOf, useHelpRequests, useMilestones, usePeople, useStages, useSubmissions, useTasks } from './data'
+import { AccountActions, HelpBanner, PersonMilestones } from './People'
 import { StageProgress } from './Home'
 import { GiveTaskModal, TaskCard } from './Tasks'
 import { PersonMoney } from './Money'
@@ -86,6 +87,7 @@ export function OwnerPeople() {
   const invitations = useInvitations()
   const stages = useStages()
   const tasks = useTasks()
+  const milestones = useMilestones()
   const [inviting, setInviting] = useState(false)
   const stageName = (id: string | null) => stages.data?.find((s) => s.id === id)?.name ?? ''
   const joined = (people.data ?? []).filter((p) => p.status !== 'invited')
@@ -143,10 +145,10 @@ export function OwnerPeople() {
                       </span>
                     </span>
                   </span>
-                  <StageProgress value={progressOf(p, tasks.data ?? [], stages.data ?? [])} stages={stages.data ?? []} />
+                  <StageProgress value={progressOf(p, tasks.data ?? [], stages.data ?? [], milestones.data ?? [])} stages={stages.data ?? []} />
                   <span className="flex flex-wrap gap-1.5 sm:justify-end">
                     {(tasks.data ?? []).some((t) => t.participant_id === p.id && t.status === 'submitted') && <Badge tone="warn">Work to check</Badge>}
-                    {p.archived_at ? <Badge>Archived</Badge> : <Badge tone="accent">Active</Badge>}
+                    {p.blocked_at ? <Badge tone="danger">Blocked</Badge> : p.archived_at ? <Badge>Archived</Badge> : <Badge tone="accent">Active</Badge>}
                   </span>
                 </Link>
               </li>
@@ -302,6 +304,8 @@ export function OwnerPerson() {
   const [giving, setGiving] = useState(false)
   const tasks = useTasks()
   const submissions = useSubmissions()
+  const milestones = useMilestones()
+  const help = useHelpRequests()
   const person = useQuery({
     queryKey: ['people', id],
     queryFn: async () => {
@@ -341,15 +345,17 @@ export function OwnerPerson() {
             @{p.username} · {p.email}{p.joined_at ? ` · joined ${formatDate(p.joined_at)}` : ''}
           </p>
         </div>
-        {p.archived_at ? <Badge>Archived</Badge> : <Badge tone="accent">Active</Badge>}
+        {p.blocked_at ? <Badge tone="danger">Blocked</Badge> : p.archived_at ? <Badge>Archived</Badge> : <Badge tone="accent">Active</Badge>}
       </div>
 
+      {(help.data ?? []).filter((h) => h.participant_id === p.id && !h.resolved_at).map((h) => <HelpBanner key={h.id} request={h} />)}
+
       <div className="flex flex-wrap gap-2">
-        <Button onClick={() => setGiving(true)} disabled={!!p.archived_at}>
+        <Button onClick={() => setGiving(true)} disabled={!!p.archived_at || !!p.blocked_at}>
           <Plus size={17} />
           Give a task
         </Button>
-        {!p.archived_at && (
+        {!p.archived_at && !p.blocked_at && (
           <Link to={`/admin/messages/${p.id}`} className="inline-flex items-center gap-2 rounded-lg border border-line bg-surface px-4 py-2.5 text-sm font-medium hover:bg-sunken">
             <MessageCircle size={17} />
             Message
@@ -359,9 +365,11 @@ export function OwnerPerson() {
 
       <Card>
         <SectionTitle>Verified progress</SectionTitle>
-        <StageProgress value={progressOf(p, tasks.data ?? [], stages.data ?? [])} stages={stages.data ?? []} />
-        <p className="mt-2 text-sm text-muted">The bar moves when you approve their work. Moving them to the next stage is your decision, below.</p>
+        <StageProgress value={progressOf(p, tasks.data ?? [], stages.data ?? [], milestones.data ?? [])} stages={stages.data ?? []} />
+        <p className="mt-2 text-sm text-muted">The bar moves when you approve their work or tick a milestone. Moving them to the next stage is your decision, below.</p>
       </Card>
+
+      <PersonMilestones person={p} stages={stages.data ?? []} />
 
       <section className="flex flex-col gap-3">
         <h2 className="text-base font-semibold">Tasks</h2>
@@ -399,22 +407,6 @@ export function OwnerPerson() {
         <p className="break-words whitespace-pre-wrap">{p.current_goals || 'Not written yet.'}</p>
       </Card>
 
-      <Card className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold">{p.archived_at ? 'This person is archived' : 'Archive this person'}</h2>
-          <p className="text-sm text-muted">
-            {p.archived_at
-              ? 'They can still sign in and read, but cannot change anything.'
-              : 'They keep their history and can still read it, but can no longer change anything.'}
-          </p>
-        </div>
-        {p.archived_at ? (
-          <Button variant="secondary" onClick={() => void change({ archived_at: null }, 'Brought back.')}>Bring back</Button>
-        ) : (
-          <Button variant="secondary" onClick={() => void change({ archived_at: new Date().toISOString() }, 'Archived.')}>Archive</Button>
-        )}
-      </Card>
-
       <Card className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
@@ -438,6 +430,8 @@ export function OwnerPerson() {
         </div>
         {resetLink && <ShareLink link={resetLink} forWhom={p.full_name} />}
       </Card>
+
+      <AccountActions person={p} />
 
       {note && <p role="status" className="text-sm font-medium text-accent-strong">{note}</p>}
       {giving && <GiveTaskModal people={[p]} fixedPersonId={p.id} onClose={() => setGiving(false)} />}
