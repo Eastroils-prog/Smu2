@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ChevronRight } from 'lucide-react'
+import { AlertTriangle, CheckSquare, ChevronRight, FileSpreadsheet, LifeBuoy, MessageCircle, Users } from 'lucide-react'
 import { Avatar, Badge, Card, Empty, PageTitle, SectionTitle } from '../features/shared/ui'
 import { useAuth } from './auth'
 import { LoadError } from './Tasks'
@@ -61,13 +61,15 @@ export function OwnerDashboard() {
     : 0
 
   const stats = [
-    { label: 'Active people', value: active.length, to: '/admin/people' },
-    { label: 'Need your attention', value: needsYou, to: '#attention', alert: needsYou > 0 },
-    { label: 'Work to check', value: toCheck, to: '/admin/tasks' },
-    { label: 'Unread messages', value: unread, to: '/admin/messages' },
-    { label: 'Help requests', value: openHelp.length, to: '#attention', alert: openHelp.length > 0 },
-    { label: 'Files to approve', value: filesWaiting, to: '/admin/files' },
+    { label: 'Active people', value: active.length, to: '/admin/people', icon: <Users size={18} /> },
+    { label: 'Need your attention', value: needsYou, to: '#attention', alert: needsYou > 0, icon: <AlertTriangle size={18} /> },
+    { label: 'Work to check', value: toCheck, to: '/admin/tasks', icon: <CheckSquare size={18} /> },
+    { label: 'Unread messages', value: unread, to: '/admin/messages', icon: <MessageCircle size={18} /> },
+    { label: 'Help requests', value: openHelp.length, to: '#attention', alert: openHelp.length > 0, icon: <LifeBuoy size={18} /> },
+    { label: 'Files to approve', value: filesWaiting, to: '/admin/files', icon: <FileSpreadsheet size={18} /> },
   ]
+  const hour = new Date().getHours()
+  const greeting = `${hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'}, ${profile.full_name.split(' ')[0]}.`
 
   if (people.isError || tasks.isError) {
     return (
@@ -80,13 +82,23 @@ export function OwnerDashboard() {
 
   return (
     <>
-      <PageTitle title="Dashboard" subtitle="Here is how your people are doing today." />
+      <PageTitle title="Dashboard" subtitle={`${greeting} Here is how your people are doing today.`} />
 
       <dl className="grid grid-cols-2 gap-3 lg:grid-cols-3" data-testid="stats">
         {stats.map((s) => (
-          <Link key={s.label} to={s.to} className="rounded-2xl border border-line bg-surface p-4 transition-colors hover:border-accent" data-testid="stat">
-            <dd className={`font-display text-3xl font-bold tabular-nums ${s.alert ? 'text-danger' : ''}`}>{s.value}</dd>
-            <dt className="text-sm text-muted">{s.label}</dt>
+          <Link
+            key={s.label}
+            to={s.to}
+            className={`group flex flex-col gap-3 rounded-2xl border p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-lift ${
+              s.alert ? 'border-danger/25 bg-danger-soft' : 'border-line/70 bg-surface'
+            }`}
+            data-testid="stat"
+          >
+            <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl ${s.alert ? 'bg-surface text-danger' : 'bg-accent-soft text-accent-strong'}`}>{s.icon}</span>
+            <span className="flex flex-col">
+              <dd className={`font-display text-[32px] leading-none font-extrabold tabular-nums ${s.alert ? 'text-danger' : ''}`}>{s.value}</dd>
+              <dt className={`mt-1 text-sm ${s.alert ? 'text-danger' : 'text-muted'}`}>{s.label}</dt>
+            </span>
           </Link>
         ))}
       </dl>

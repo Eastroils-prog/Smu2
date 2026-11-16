@@ -108,28 +108,59 @@ function RealShell() {
   const unread = unreadTotal(messages.data ?? [], profile.id)
   const toCheck = isAdmin ? (tasks.data ?? []).filter((t) => t.status === 'submitted').length : 0
   const filesToCheck = isAdmin ? (sharedFiles.data ?? []).filter((f) => f.status === 'pending').length : 0
-  const items: { to: string; label: string; icon: ReactNode; end?: boolean; badge?: number }[] = isAdmin
+  type Item = { to: string; label: string; icon: ReactNode; end?: boolean; badge?: number }
+  const groups: { title: string; items: Item[] }[] = isAdmin
     ? [
-        { to: '/admin', label: 'Dashboard', icon: <LayoutDashboard size={19} />, end: true },
-        { to: '/admin/people', label: 'People', icon: <Users size={19} /> },
-        { to: '/admin/tasks', label: 'Tasks', icon: <CheckSquare size={19} />, badge: toCheck },
-        { to: '/admin/messages', label: 'Messages', icon: <MessageCircle size={19} />, badge: unread },
-        { to: '/admin/files', label: 'Files', icon: <FileSpreadsheet size={19} />, badge: filesToCheck },
-        { to: '/admin/polls', label: 'Polls', icon: <Vote size={19} /> },
-        { to: '/admin/calendar', label: 'Calendar', icon: <CalendarDays size={19} /> },
-        { to: '/admin/reminders', label: 'Reminders', icon: <Bell size={19} />, badge: remindersDue },
-        { to: '/admin/profile', label: 'My account', icon: <User size={19} /> },
+        {
+          title: 'Programme',
+          items: [
+            { to: '/admin', label: 'Dashboard', icon: <LayoutDashboard size={18} />, end: true },
+            { to: '/admin/people', label: 'People', icon: <Users size={18} /> },
+            { to: '/admin/tasks', label: 'Tasks', icon: <CheckSquare size={18} />, badge: toCheck },
+          ],
+        },
+        {
+          title: 'Together',
+          items: [
+            { to: '/admin/messages', label: 'Messages', icon: <MessageCircle size={18} />, badge: unread },
+            { to: '/admin/files', label: 'Files', icon: <FileSpreadsheet size={18} />, badge: filesToCheck },
+            { to: '/admin/polls', label: 'Polls', icon: <Vote size={18} /> },
+          ],
+        },
+        {
+          title: 'Planning',
+          items: [
+            { to: '/admin/calendar', label: 'Calendar', icon: <CalendarDays size={18} /> },
+            { to: '/admin/reminders', label: 'Reminders', icon: <Bell size={18} />, badge: remindersDue },
+          ],
+        },
+        { title: 'You', items: [{ to: '/admin/profile', label: 'My account', icon: <User size={18} /> }] },
       ]
     : [
-        { to: '/app', label: 'Home', icon: <Home size={19} />, end: true },
-        { to: '/app/tasks', label: 'Tasks', icon: <CheckSquare size={19} /> },
-        { to: '/app/messages', label: 'Messages', icon: <MessageCircle size={19} />, badge: unread },
-        { to: '/app/money', label: 'Money', icon: <PiggyBank size={19} /> },
-        { to: '/app/files', label: 'Files', icon: <FileSpreadsheet size={19} /> },
-        { to: '/app/polls', label: 'Polls', icon: <Vote size={19} /> },
-        { to: '/app/calendar', label: 'Calendar', icon: <CalendarDays size={19} /> },
-        { to: '/app/reminders', label: 'Reminders', icon: <Bell size={19} />, badge: remindersDue },
-        { to: '/app/profile', label: 'Profile', icon: <User size={19} /> },
+        {
+          title: 'My work',
+          items: [
+            { to: '/app', label: 'Home', icon: <Home size={18} />, end: true },
+            { to: '/app/tasks', label: 'Tasks', icon: <CheckSquare size={18} /> },
+            { to: '/app/money', label: 'Money', icon: <PiggyBank size={18} /> },
+          ],
+        },
+        {
+          title: 'Together',
+          items: [
+            { to: '/app/messages', label: 'Messages', icon: <MessageCircle size={18} />, badge: unread },
+            { to: '/app/files', label: 'Files', icon: <FileSpreadsheet size={18} /> },
+            { to: '/app/polls', label: 'Polls', icon: <Vote size={18} /> },
+          ],
+        },
+        {
+          title: 'Planning',
+          items: [
+            { to: '/app/calendar', label: 'Calendar', icon: <CalendarDays size={18} /> },
+            { to: '/app/reminders', label: 'Reminders', icon: <Bell size={18} />, badge: remindersDue },
+          ],
+        },
+        { title: 'You', items: [{ to: '/app/profile', label: 'Profile', icon: <User size={18} /> }] },
       ]
 
   const leave = async () => {
@@ -137,53 +168,83 @@ function RealShell() {
     client.clear()
   }
 
+  const brand = (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-spark text-on-spark">
+        <Sprout size={20} />
+      </span>
+      <span className="font-display text-xl font-extrabold tracking-tight">VentureTrack</span>
+    </div>
+  )
+
   return (
-    <div className="gutter min-h-full">
-      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 py-5 md:grid-cols-[13rem_minmax(0,1fr)] md:py-8">
-        <aside className="flex flex-wrap items-center justify-between gap-3 md:sticky md:top-8 md:flex-col md:flex-nowrap md:items-stretch md:justify-start md:self-start">
-          <div className="flex items-center gap-2 px-1">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-accent text-on-accent">
-              <Sprout size={20} />
-            </span>
-            <div className="min-w-0 leading-tight">
-              <p className="font-display text-lg font-bold">VentureTrack</p>
-              <p className="truncate text-xs text-muted">@{profile.username}{isAdmin ? ' · owner' : ''}</p>
+    <div className="min-h-full md:pl-64">
+      {/* The rail: a band across the top on phones, a panel down the left on computers. */}
+      <aside className="on-rail bg-rail text-rail-ink md:fixed md:inset-y-0 md:left-0 md:flex md:w-64 md:flex-col">
+        <div className="gutter flex items-center justify-between gap-3 pt-4 pb-3 md:px-5 md:pt-6 md:pb-5">
+          {brand}
+          <button
+            onClick={() => void leave()}
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-rail-muted hover:bg-rail-raised hover:text-rail-ink md:hidden"
+          >
+            <LogOut size={16} />
+            Sign out
+          </button>
+        </div>
+
+        <nav aria-label="Main" className="scroll-strip flex gap-1 overflow-x-auto px-3 pb-3 [mask-image:linear-gradient(to_right,black_85%,transparent)] md:[mask-image:none] md:flex-1 md:flex-col md:gap-5 md:overflow-y-auto md:px-3 md:pb-4">
+          {groups.map((group) => (
+            <div key={group.title} className="flex shrink-0 gap-1 md:flex-col md:gap-0.5">
+              <p className="hidden px-3 pb-1 text-[11px] font-semibold tracking-[0.08em] text-rail-muted/80 uppercase md:block">{group.title}</p>
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  className={({ isActive }) =>
+                    `relative flex shrink-0 items-center gap-2 rounded-full px-3.5 py-2 text-sm font-semibold whitespace-nowrap transition-colors md:gap-3 md:rounded-xl md:px-3 md:py-2.5 ${
+                      isActive
+                        ? 'bg-spark text-on-spark md:bg-rail-raised md:text-rail-ink md:before:absolute md:before:inset-y-2 md:before:-left-3 md:before:w-1 md:before:rounded-r-full md:before:bg-spark'
+                        : 'text-rail-muted hover:bg-rail-raised hover:text-rail-ink'
+                    }`
+                  }
+                >
+                  {item.icon}
+                  <span className="md:flex-1">{item.label}</span>
+                  {!!item.badge && (
+                    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-spark px-1.5 text-[11px] font-bold text-on-spark tabular-nums ring-2 ring-rail">
+                      {item.badge}
+                    </span>
+                  )}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <div className="hidden border-t border-white/10 p-4 md:block">
+          <div className="flex items-center gap-3">
+            <Avatar name={profile.full_name} />
+            <div className="min-w-0 flex-1 leading-tight">
+              <p className="truncate text-sm font-semibold">{profile.full_name}</p>
+              <p className="truncate text-xs text-rail-muted">@{profile.username}{isAdmin ? ' · owner' : ''}</p>
             </div>
           </div>
           <button
             onClick={() => void leave()}
-            className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted hover:bg-sunken hover:text-ink md:order-last md:mt-4"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm font-medium text-rail-muted hover:bg-rail-raised hover:text-rail-ink"
           >
-            <LogOut size={17} />
+            <LogOut size={16} />
             Sign out
           </button>
-          <nav aria-label="Main" className="flex w-full flex-wrap gap-1 md:mt-4 md:flex-col md:flex-nowrap">
-            {items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  `flex items-center gap-2 rounded-xl px-3 py-2.5 font-medium md:gap-3 ${
-                    isActive ? 'bg-accent-soft text-accent-strong' : 'text-muted hover:bg-sunken hover:text-ink'
-                  }`
-                }
-              >
-                {item.icon}
-                <span className="md:flex-1">{item.label}</span>
-                {!!item.badge && (
-                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-semibold text-on-accent tabular-nums">
-                    {item.badge}
-                  </span>
-                )}
-              </NavLink>
-            ))}
-          </nav>
-        </aside>
-        <main className="flex min-w-0 flex-col gap-5 pb-10">
+        </div>
+      </aside>
+
+      <main className="gutter">
+        <div className="mx-auto flex max-w-5xl min-w-0 flex-col gap-5 py-6 pb-16 md:py-10">
           <Outlet />
-        </main>
-      </div>
+        </div>
+      </main>
     </div>
   )
 }

@@ -8,20 +8,38 @@ import { useAuth } from './auth'
 export const MIN_PASSWORD = 10
 const USERNAME = /^[a-z0-9][a-z0-9._]{2,29}$/
 
+const JOURNEY = ['Business idea', 'Market research', 'Business planning', 'Product development', 'Marketing and validation', 'Launch preparation']
+
 function AuthFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="gutter flex min-h-full items-center justify-center py-10">
-      <div className="flex w-full max-w-md flex-col gap-6">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-on-accent">
-            <Sprout size={26} />
+    <div className="grid min-h-full grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      {/* The programme's story, on the dark rail. On phones it shrinks to a header. */}
+      <aside className="on-rail gutter relative flex flex-col justify-between overflow-hidden bg-rail py-5 text-rail-ink lg:gap-8 lg:px-12 lg:py-12">
+        <div className="flex items-center gap-2.5">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-spark text-on-spark">
+            <Sprout size={22} />
           </span>
-          <div>
-            <p className="font-display text-3xl font-bold tracking-tight">VentureTrack</p>
-            <p className="text-muted">Guide people from idea to launch.</p>
-          </div>
+          <span className="font-display text-2xl font-extrabold tracking-tight">VentureTrack</span>
         </div>
-        {children}
+        <div className="hidden max-w-md lg:block">
+          <p className="font-display text-4xl leading-[1.08] font-extrabold tracking-tight text-balance">From a first idea to opening day.</p>
+          <ol className="mt-8 flex flex-col gap-3" aria-label="The six stages">
+            {JOURNEY.map((stage, i) => (
+              <li key={stage} className="flex items-center gap-3 text-rail-muted">
+                <span className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-display text-sm font-bold ${i === JOURNEY.length - 1 ? 'bg-spark text-on-spark' : 'border border-white/15 text-rail-ink'}`}>
+                  {i + 1}
+                </span>
+                {stage}
+              </li>
+            ))}
+          </ol>
+        </div>
+        <p className="hidden text-sm text-rail-muted lg:block">A private space for one programme and its people.</p>
+        <span aria-hidden="true" className="pointer-events-none absolute -right-24 -bottom-24 hidden h-72 w-72 rounded-full border-[40px] border-white/[0.04] lg:block" />
+      </aside>
+
+      <div className="gutter flex items-start justify-center py-10 lg:items-center">
+        <div className="rise-in flex w-full max-w-md flex-col gap-5">{children}</div>
       </div>
     </div>
   )
@@ -87,8 +105,8 @@ export function SignInPage() {
 
   return (
     <AuthFrame>
-      <form onSubmit={submit} className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5" noValidate>
-        <h1 className="text-lg font-semibold">Sign in</h1>
+      <form onSubmit={submit} className="flex flex-col gap-5 rounded-3xl border border-line/70 bg-surface p-6 shadow-card sm:p-8" noValidate>
+        <h1 className="text-2xl font-extrabold">Sign in</h1>
         <Field label="Username" htmlFor="signin-username">
           <input
             id="signin-username"
@@ -122,8 +140,8 @@ export function SignInPage() {
 export function ForgotPage() {
   return (
     <AuthFrame>
-      <div className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5">
-        <h1 className="text-lg font-semibold">Forgot your password?</h1>
+      <div className="flex flex-col gap-5 rounded-3xl border border-line/70 bg-surface p-6 shadow-card sm:p-8">
+        <h1 className="text-2xl font-extrabold">Forgot your password?</h1>
         <p>Ask the programme owner for a new link. They can make one for you in a few seconds.</p>
         <p className="text-sm text-muted">Open the link they send you, and you can choose a new password. The link works once, for 24 hours.</p>
         <Link to="/sign-in" className="self-start text-sm font-medium text-accent-strong">
@@ -145,7 +163,7 @@ export function SetPasswordPage() {
   return (
     <AuthFrame>
       <form
-        className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5"
+        className="flex flex-col gap-5 rounded-3xl border border-line/70 bg-surface p-6 shadow-card sm:p-8"
         noValidate
         onSubmit={async (e) => {
           e.preventDefault()
@@ -160,7 +178,7 @@ export function SetPasswordPage() {
           else finishRecovery()
         }}
       >
-        <h1 className="text-lg font-semibold">Choose a new password</h1>
+        <h1 className="text-2xl font-extrabold">Choose a new password</h1>
         <Field label={`New password (at least ${MIN_PASSWORD} characters)`} htmlFor="new-password">
           <PasswordInput id="new-password" value={password} onChange={setPassword} autoComplete="new-password" />
         </Field>
@@ -226,9 +244,9 @@ export function WelcomePage() {
 
   return (
     <AuthFrame>
-      <form onSubmit={submit} className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5" noValidate>
+      <form onSubmit={submit} className="flex flex-col gap-5 rounded-3xl border border-line/70 bg-surface p-6 shadow-card sm:p-8" noValidate>
         <div>
-          <h1 className="text-lg font-semibold">Welcome{profile ? `, ${profile.full_name.split(' ')[0]}` : ''}!</h1>
+          <h1 className="text-2xl font-extrabold">Welcome{profile ? `, ${profile.full_name.split(' ')[0]}` : ''}!</h1>
           <p className="mt-1 text-sm text-muted">
             Pick a username and a password. You will use them to sign in from now on.
           </p>
