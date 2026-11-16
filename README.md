@@ -26,6 +26,9 @@ and follow-ups.
   (the owner for every task, each participant for their own), plus private
   one-off, weekly or monthly reminders anyone can add: **built and tested locally;
   database part applied to the hosted project**.
+- Phone app: installable to the home screen (Android and iPhone) with
+  notifications for messages, tasks and feedback, help requests, polls,
+  shared files, and a morning summary of reminders and deadlines.
 - Not built yet: private notes, analytics. Messages
   refresh every few seconds rather than instantly.
 
@@ -54,6 +57,10 @@ npm run dev
 
 The live website reads its two public settings from `.env.production`.
 
+Phone notifications on the local stack: run `node scripts/local-push-setup.mjs`
+once after `supabase start` (and after every `supabase db reset`), then restart
+`supabase functions serve`. App icons are drawn by `node scripts/make-icons.cjs`.
+
 Create the one administrator (once):
 
 1. Create a user with a confirmed e-mail (Supabase dashboard → Authentication → Add user).
@@ -62,6 +69,6 @@ Create the one administrator (once):
 Tests:
 
 ```
-npm run test:db                   # 181 database-level checks (pgTAP)
-npm run build && npm run test:real  # 85 end-to-end checks; WIPES local accounts
+npm run test:db                   # 196 database-level checks (pgTAP)
+npm run build && npm run test:real  # 94 end-to-end checks; WIPES local accounts
 ```

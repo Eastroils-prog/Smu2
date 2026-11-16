@@ -18,6 +18,66 @@ const DB = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres'
 const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0'
 const SERVICE = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU'
 const shots = process.env.SHOTS_DIR
+const crypto = require('node:crypto')
+const http = require('node:http')
+
+// ---------- A stand-in for the push service (Google's or Apple's) ----------
+// It receives what send-push sends, checks the VAPID signature, and decrypts
+// the message exactly as a phone would (RFC 8291 / RFC 8292).
+const b64url = (buf) => Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+const fromB64url = (text) => Buffer.from(text.replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+
+function fakeDevice() {
+  const ecdh = crypto.createECDH('prime256v1')
+  ecdh.generateKeys()
+  const auth = crypto.randomBytes(16)
+  return { ecdh, auth, p256dh: b64url(ecdh.getPublicKey()), authB64: b64url(auth) }
+}
+
+function decrypt(device, body) {
+  const salt = body.subarray(0, 16)
+  const idLength = body[20]
+  const asPublic = body.subarray(21, 21 + idLength)
+  const cipher = body.subarray(21 + idLength)
+  const shared = device.ecdh.computeSecret(asPublic)
+  const uaPublic = device.ecdh.getPublicKey()
+  const info = Buffer.concat([Buffer.from('WebPush: info\0'), uaPublic, asPublic])
+  const ikm = Buffer.from(crypto.hkdfSync('sha256', shared, device.auth, info, 32))
+  const cek = Buffer.from(crypto.hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: aes128gcm\0'), 16))
+  const nonce = Buffer.from(crypto.hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: nonce\0'), 12))
+  const decipher = crypto.createDecipheriv('aes-128-gcm', cek, nonce)
+  decipher.setAuthTag(cipher.subarray(cipher.length - 16))
+  const plain = Buffer.concat([decipher.update(cipher.subarray(0, cipher.length - 16)), decipher.final()])
+  return JSON.parse(plain.subarray(0, plain.lastIndexOf(2)).toString('utf8'))
+}
+
+function verifyVapid(header, origin, expectedKey) {
+  const t = header.match(/t=([^,\s]+)/)[1]
+  const k = header.match(/k=([^,\s]+)/)[1]
+  assert.equal(k, expectedKey, 'the push must be signed with our public key')
+  const [h, c, sig] = t.split('.')
+  const raw = fromB64url(k)
+  const key = crypto.createPublicKey({ key: { kty: 'EC', crv: 'P-256', x: b64url(raw.subarray(1, 33)), y: b64url(raw.subarray(33, 65)) }, format: 'jwk' })
+  assert.ok(crypto.verify('sha256', Buffer.from(`${h}.${c}`), { key, dsaEncoding: 'ieee-p1363' }, fromB64url(sig)), 'the VAPID signature must be valid')
+  const claims = JSON.parse(fromB64url(c).toString())
+  assert.equal(claims.aud, origin)
+  assert.ok(claims.exp > Date.now() / 1000)
+}
+
+function startPushService(port) {
+  const received = [] // { path, headers, body }
+  const server = http.createServer((req, res) => {
+    const chunks = []
+    req.on('data', (c) => chunks.push(c))
+    req.on('end', () => {
+      received.push({ path: req.url, headers: req.headers, body: Buffer.concat(chunks) })
+      res.statusCode = req.url.endsWith('/gone') ? 410 : 201
+      res.end()
+    })
+  })
+  server.listen(port, '0.0.0.0')
+  return { server, received }
+}
 
 const OWNER_PASSWORD = 'owner-password-1'
 const SAM_PASSWORD = 'sam-password-12'
@@ -58,6 +118,14 @@ async function mailLink(address, after = 0) {
 }
 
 async function main() {
+  // Phone notifications need the local keys and Vault entries (safe to repeat).
+  execFileSync('node', ['scripts/local-push-setup.mjs'], { stdio: 'ignore' })
+  const VAPID_PUBLIC = require('node:fs').readFileSync('supabase/functions/.env', 'utf8').match(/^VAPID_PUBLIC_KEY=(.*)$/m)[1]
+  const PUSH_PORT = 4190
+  const pushService = startPushService(PUSH_PORT)
+  // The functions run in a container; from there this machine is the network's gateway.
+  const gateway = execFileSync('docker', ['network', 'inspect', 'supabase_network_Smu2', '-f', '{{range .IPAM.Config}}{{.Gateway}}{{end}}'], { encoding: 'utf8' }).trim()
+  const pushOrigin = `http://${gateway}:${PUSH_PORT}`
   // Safety: only ever test a build that talks to the LOCAL stack.
   const built = execFileSync('sh', ['-c', 'cat dist/assets/*.js'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
   if (!built.includes('127.0.0.1:54321')) {
@@ -65,7 +133,7 @@ async function main() {
   }
 
   // ---- Clean start: no accounts, no mail, one owner created the documented way ----
-  sql('delete from public.reminders; delete from public.help_requests; delete from public.milestones; delete from public.polls; delete from public.shared_files; delete from public.finance_entries; delete from public.messages; delete from public.tasks; delete from public.participant_invitations; delete from auth.users; delete from private.sign_in_attempts;')
+  sql('delete from private.push_outbox; delete from private.push_digests; delete from public.push_subscriptions; delete from public.reminders; delete from public.help_requests; delete from public.milestones; delete from public.polls; delete from public.shared_files; delete from public.finance_entries; delete from public.messages; delete from public.tasks; delete from public.participant_invitations; delete from auth.users; delete from private.sign_in_attempts;')
   await fetch(`${MAIL}/api/v1/messages`, { method: 'DELETE' })
 
   const created = await api('/auth/v1/admin/users', {
@@ -784,8 +852,161 @@ async function main() {
     sql("delete from public.tasks where title = 'Price list for group walks'")
     ok('Sam ticks the reminder off on the calendar; after Sam hands the work in, the deadline reminder disappears for both')
 
+    // ---- Phone app and notifications ----
+    section('8. Phone app and notifications, with the real back end')
+    step = 0
+    const manifest = await (await fetch(`${SITE}/manifest.webmanifest`)).json()
+    assert.equal(manifest.name, 'VentureTrack')
+    assert.equal(manifest.display, 'standalone')
+    for (const icon of manifest.icons) {
+      const res = await fetch(SITE + icon.src)
+      assert.equal(res.status, 200)
+      assert.equal(res.headers.get('content-type'), 'image/png')
+    }
+    assert.match(await (await fetch(`${SITE}/sw.js`)).text(), /showNotification/)
+    const swUrl = await owner.evaluate(async () => (await navigator.serviceWorker.ready).active?.scriptURL)
+    assert.ok(swUrl.endsWith('/sw.js'))
+    ok('the app can be installed: app file, icons and background helper are served, and the helper is running')
+
+    // As if each person had tapped "Allow" when the browser asked about notifications.
+    await ownerCtx.grantPermissions(['notifications'], { origin: SITE })
+    await samCtx.grantPermissions(['notifications'], { origin: SITE })
+    await nav(owner, 'My account').click()
+    const phoneCard = owner.locator('section').filter({ has: owner.getByRole('heading', { name: 'Phone app and notifications' }) })
+    await phoneCard.getByRole('button', { name: 'Turn on notifications' }).waitFor()
+    await snap(owner, 'owner-phone-app')
+    await nav(sam, 'Home').click()
+    await sam.getByTestId('phone-prompt').getByRole('link', { name: 'Set it up' }).click()
+    await sam.getByRole('heading', { name: 'Phone app and notifications' }).waitFor()
+    await snap(sam, 'participant-phone-app')
+    ok('the profile page explains how to install the app and offers to turn on notifications; Home links to it')
+
+    // Each person's "phone": a fake device pointing at the stand-in push service.
+    const ownerDevice = fakeDevice()
+    const samDevice = fakeDevice()
+    const signedOwner = (await signInApi('owner', OWNER_PASSWORD)).data.access_token
+    const signedSam = (await signInApi('sam.b', SAM_NEW_PASSWORD)).data.access_token
+    const subscribe = (token, device, path) => api('/rest/v1/rpc/save_push_subscription', {
+      method: 'POST', token,
+      body: { p_endpoint: `${pushOrigin}/${path}`, p_p256dh: device.p256dh, p_auth: device.authB64, p_time_zone: 'Europe/Riga', p_device: 'Test phone' },
+    })
+    assert.ok((await subscribe(signedOwner, ownerDevice, 'owner')).ok)
+    assert.ok((await subscribe(signedSam, samDevice, 'sam')).ok)
+    await owner.reload()
+    await owner.getByTestId('device-count').getByText('1 device').waitFor()
+
+    /** Wait for the next push to `path`, check its signature, and decrypt it. */
+    const nextPush = async (path, device, after) => {
+      for (let i = 0; i < 80; i++) {
+        const hit = pushService.received.find((r, index) => index >= after && r.path === `/${path}`)
+        if (hit) {
+          assert.equal(hit.headers['content-encoding'], 'aes128gcm')
+          verifyVapid(hit.headers.authorization, pushOrigin, VAPID_PUBLIC)
+          return decrypt(device, hit.body)
+        }
+        await sleep(250)
+      }
+      throw new Error(`no notification arrived at /${path}`)
+    }
+    const mark = () => pushService.received.length
+
+    let from = mark()
+    await nav(owner, 'Messages').click()
+    await owner.getByRole('link', { name: /Sam Baker/ }).click()
+    await owner.getByLabel('Write a message').fill('Can we talk tomorrow at 10?')
+    await owner.getByRole('button', { name: 'Send message' }).click()
+    let note = await nextPush('sam', samDevice, from)
+    assert.equal(note.title, 'Message from Administrator')
+    assert.equal(note.body, 'Can we talk tomorrow at 10?')
+    assert.equal(note.url, `/app/messages/${sql("select id from public.profiles where role = 'admin'")}`)
+    ok('a message from the owner reaches Sam\'s phone within seconds: signed by VentureTrack, readable only by Sam\'s device, and opening the conversation')
+
+    from = mark()
+    await nav(owner, 'People').click()
+    await owner.getByRole('link', { name: /Sam Baker/ }).click()
+    await owner.getByRole('button', { name: 'Give a task' }).click()
+    await owner.getByLabel('What should they do?').fill('Ask two vets for a quote')
+    await owner.getByRole('button', { name: 'Give this task' }).click()
+    note = await nextPush('sam', samDevice, from)
+    assert.deepEqual([note.title, note.body, note.url], ['New task', 'Ask two vets for a quote', '/app/tasks'])
+
+    from = mark()
+    const pushTaskId = sql("select id from public.tasks where title = 'Ask two vets for a quote'")
+    await api('/rest/v1/rpc/start_task', { method: 'POST', token: signedSam, body: { p_task_id: pushTaskId } })
+    await api('/rest/v1/rpc/submit_task', { method: 'POST', token: signedSam, body: { p_task_id: pushTaskId, p_body: 'Both said 40 euros.' } })
+    note = await nextPush('owner', ownerDevice, from)
+    assert.deepEqual([note.title, note.body], ['Sam Baker handed in work', 'Ask two vets for a quote'])
+
+    from = mark()
+    await api('/rest/v1/rpc/review_task', { method: 'POST', token: signedOwner, body: { p_task_id: pushTaskId, p_approve: true } })
+    note = await nextPush('sam', samDevice, from)
+    assert.equal(note.title, 'Your work was approved')
+    sql(`delete from public.tasks where id = '${pushTaskId}'`)
+    ok('tasks and feedback notify the right person: Sam hears about a new task and the approval, the owner hears that work was handed in')
+
+    from = mark()
+    await api('/rest/v1/help_requests', { method: 'POST', token: signedSam, body: { body: 'Is 40 euros a fair price?' } })
+    note = await nextPush('owner', ownerDevice, from)
+    assert.deepEqual([note.title, note.body], ['Sam Baker asked for help', 'Is 40 euros a fair price?'])
+    sql("update public.help_requests set resolved_at = now(), resolved_by = (select id from public.profiles where role = 'admin') where resolved_at is null")
+
+    from = mark()
+    await api('/rest/v1/rpc/create_poll', { method: 'POST', token: signedOwner, body: { p_question: 'Pizza or soup on Friday?', p_options: ['Pizza', 'Soup'], p_allow_multiple: false } })
+    note = await nextPush('sam', samDevice, from)
+    assert.deepEqual([note.title, note.body, note.url], ['New poll', 'Pizza or soup on Friday?', '/app/polls'])
+    sql("delete from public.polls where question = 'Pizza or soup on Friday?'")
+    ok('help requests reach the owner, and new polls reach the participants')
+
+    from = mark()
+    await api('/rest/v1/reminders', { method: 'POST', token: signedSam, body: { title: 'Call the printer', due_on: localIso(0) } })
+    sql('delete from private.push_digests; select private.queue_digests(true);')
+    note = await nextPush('sam', samDevice, from)
+    assert.equal(note.title, 'Your day in VentureTrack')
+    assert.match(note.body, /1 reminder/)
+    assert.equal(note.url, '/app/reminders')
+    sql("delete from public.reminders where title = 'Call the printer'")
+    ok("the morning summary tells Sam about today's reminder and opens the Reminders page")
+
+    from = mark()
+    assert.ok((await api('/rest/v1/rpc/push_test', { method: 'POST', token: signedSam, body: {} })).ok)
+    note = await nextPush('sam', samDevice, from)
+    assert.equal(note.title, 'Notifications are on')
+    assert.ok((await subscribe(signedOwner, fakeDevice(), 'gone')).ok)
+    from = mark()
+    await api('/rest/v1/rpc/send_message', { method: 'POST', token: signedSam, body: { p_to: sql("select id from public.profiles where role = 'admin'"), p_body: 'See you at 10.' } })
+    await nextPush('owner', ownerDevice, from)
+    for (let i = 0; i < 40 && sql(`select count(*) from public.push_subscriptions where endpoint = '${pushOrigin}/gone'`) !== '0'; i++) await sleep(250)
+    assert.equal(sql(`select count(*) from public.push_subscriptions where endpoint = '${pushOrigin}/gone'`), '0')
+    ok('"Send me a test" works, and a device the push service no longer knows is forgotten automatically')
+
+    // What a phone shows: hand the background helper a push, the way the phone's push service does.
+    // (The full Chromium build is used here: the stripped-down one never displays notifications.)
+    const fullBrowser = await chromium.launch({ channel: 'chromium' })
+    const phone = await (await fullBrowser.newContext({ permissions: ['notifications'] })).newPage()
+    await phone.goto(SITE)
+    await phone.evaluate(async () => (await navigator.serviceWorker.ready).active?.state)
+    const cdp = await phone.context().newCDPSession(phone)
+    const registrations = []
+    cdp.on('ServiceWorker.workerRegistrationUpdated', (e) => registrations.push(...e.registrations))
+    await cdp.send('ServiceWorker.enable')
+    for (let i = 0; i < 40 && !registrations.length; i++) await sleep(100)
+    await cdp.send('ServiceWorker.deliverPushMessage', {
+      origin: SITE + '/',
+      registrationId: registrations[0].registrationId,
+      data: JSON.stringify({ title: 'Message from Sam Baker', body: 'See you at 10.', url: '/admin/messages' }),
+    })
+    let shown = []
+    for (let i = 0; i < 40 && !shown.length; i++) {
+      shown = await phone.evaluate(async () => (await (await navigator.serviceWorker.ready).getNotifications()).map((n) => [n.title, n.body]))
+      if (!shown.length) await sleep(100)
+    }
+    await fullBrowser.close()
+    assert.deepEqual(shown[0], ['Message from Sam Baker', 'See you at 10.'])
+    ok('when a push arrives, the app shows it as a notification with its title and text')
+    sql("delete from public.messages where body in ('Can we talk tomorrow at 10?', 'See you at 10.')")
+
     // ---- Security: try every door, straight at the back end ----
-    section('8. Security (talking to the back end directly, skipping the screens)')
+    section('9. Security (talking to the back end directly, skipping the screens)')
     step = 0
     const samToken = (await signInApi('sam.b', SAM_NEW_PASSWORD)).data.access_token
     const ownerToken = (await signInApi('owner', OWNER_PASSWORD)).data.access_token
@@ -1019,8 +1240,19 @@ async function main() {
     assert.equal(sql(`select count(*) from public.reminders where id = '${reminderId}' and done_at is null`), '1')
     ok("each person's reminders are private: Sam sees none of the owner's, the owner none of Sam's; Sam cannot attach one to a person, plant one on the owner, or tick off or delete the owner's")
 
+    // ---- Phone notifications ----
+    assert.deepEqual((await api('/rest/v1/push_subscriptions?select=endpoint', { token: samToken })).data.map((d) => d.endpoint), [`${pushOrigin}/sam`])
+    await api(`/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(pushOrigin + '/owner')}`, { method: 'DELETE', token: samToken })
+    assert.equal(sql(`select count(*) from public.push_subscriptions where endpoint = '${pushOrigin}/owner'`), '1')
+    assert.ok(!(await rpcCall('push_claim_batch', samToken, { p_limit: 10 })).ok)
+    assert.ok(!(await rpcCall('push_claim_batch', ANON, { p_limit: 10 })).ok)
+    assert.ok(!(await rpcCall('save_push_subscription', ANON, { p_endpoint: 'https://evil.example/x', p_p256dh: samDevice.p256dh, p_auth: samDevice.authB64, p_time_zone: 'UTC' })).ok)
+    assert.equal((await api('/functions/v1/send-push', { method: 'POST', body: {} })).status, 401)
+    assert.equal((await api('/functions/v1/send-push', { method: 'POST', body: {}, headers: { 'x-push-secret': 'guess' } })).status, 401)
+    ok("nobody can see or remove someone else's devices, read the notification queue, or make the server send notifications")
+
     // ---- Removing people ----
-    section('9. Blocking and deleting, with the real back end')
+    section('10. Blocking and deleting, with the real back end')
     step = 0
     const leeBefore = sql(`select count(*) from storage.objects where name like '${leeId}/%'`)
     assert.ok(Number(leeBefore) >= 1, 'Lee should have at least one stored file before deletion')
@@ -1091,6 +1323,7 @@ async function main() {
     await browser.close()
     // Stop the preview server and the process it started.
     try { process.kill(-server.pid) } catch {}
+    pushService.server.close()
   }
 
   if (problems.length) {
