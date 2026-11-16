@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { BrowserRouter, NavLink, Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
-import { CheckSquare, FileSpreadsheet, Home, LayoutDashboard, LogOut, MessageCircle, PiggyBank, Sprout, User, Users, Vote } from 'lucide-react'
+import { Bell, CalendarDays, CheckSquare, FileSpreadsheet, Home, LayoutDashboard, LogOut, MessageCircle, PiggyBank, Sprout, User, Users, Vote } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { formatDate } from '../lib/data'
 import { Avatar, Button, Card, Field, PageTitle, inputClass } from '../features/shared/ui'
@@ -15,6 +15,8 @@ import { MyMoney } from './Money'
 import { FilesPage } from './Files'
 import { PollsPage } from './Polls'
 import { OwnerDashboard } from './Dashboard'
+import { CalendarPage } from './Calendar'
+import { RemindersPage, useDueCount } from './Reminders'
 import { unreadTotal, useMessages, useSharedFiles, useStages, useTasks } from './data'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true } } })
@@ -67,6 +69,8 @@ function Gate() {
           <Route path="/admin/messages/:id" element={<MessagesPage base="/admin/messages" />} />
           <Route path="/admin/files" element={<FilesPage />} />
           <Route path="/admin/polls" element={<PollsPage />} />
+          <Route path="/admin/calendar" element={<CalendarPage />} />
+          <Route path="/admin/reminders" element={<RemindersPage />} />
           <Route path="/admin/profile" element={<MyProfilePage />} />
         </Route>
       ) : (
@@ -78,6 +82,8 @@ function Gate() {
           <Route path="/app/money" element={<MyMoney />} />
           <Route path="/app/files" element={<FilesPage />} />
           <Route path="/app/polls" element={<PollsPage />} />
+          <Route path="/app/calendar" element={<CalendarPage />} />
+          <Route path="/app/reminders" element={<RemindersPage />} />
           <Route path="/app/profile" element={<MyProfilePage />} />
         </Route>
       )}
@@ -96,6 +102,7 @@ function RealShell() {
   const messages = useMessages()
   const tasks = useTasks()
   const sharedFiles = useSharedFiles()
+  const remindersDue = useDueCount()
   if (!profile) return null
   const isAdmin = profile.role === 'admin'
   const unread = unreadTotal(messages.data ?? [], profile.id)
@@ -109,6 +116,8 @@ function RealShell() {
         { to: '/admin/messages', label: 'Messages', icon: <MessageCircle size={19} />, badge: unread },
         { to: '/admin/files', label: 'Files', icon: <FileSpreadsheet size={19} />, badge: filesToCheck },
         { to: '/admin/polls', label: 'Polls', icon: <Vote size={19} /> },
+        { to: '/admin/calendar', label: 'Calendar', icon: <CalendarDays size={19} /> },
+        { to: '/admin/reminders', label: 'Reminders', icon: <Bell size={19} />, badge: remindersDue },
         { to: '/admin/profile', label: 'My account', icon: <User size={19} /> },
       ]
     : [
@@ -118,6 +127,8 @@ function RealShell() {
         { to: '/app/money', label: 'Money', icon: <PiggyBank size={19} /> },
         { to: '/app/files', label: 'Files', icon: <FileSpreadsheet size={19} /> },
         { to: '/app/polls', label: 'Polls', icon: <Vote size={19} /> },
+        { to: '/app/calendar', label: 'Calendar', icon: <CalendarDays size={19} /> },
+        { to: '/app/reminders', label: 'Reminders', icon: <Bell size={19} />, badge: remindersDue },
         { to: '/app/profile', label: 'Profile', icon: <User size={19} /> },
       ]
 

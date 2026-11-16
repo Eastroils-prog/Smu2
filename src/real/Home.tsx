@@ -4,6 +4,7 @@ import { Card, Empty, PageTitle, SectionTitle, StatusBadge } from '../features/s
 import { useAuth } from './auth'
 import { dueLabel, isLate, progressOf, useMilestones, useStages, useSubmissions, useTasks } from './data'
 import { AskForHelp, MyMilestones } from './People'
+import { DueReminders } from './Reminders'
 
 /** Progress bar cut into one slice per stage. `value` is 0 to 1. */
 export function StageProgress({ value, stages }: { value: number; stages: Stage[] }) {
@@ -78,6 +79,8 @@ export function MyHome() {
           </ul>
         )}
       </Card>
+
+      <DueReminders />
 
       <AskForHelp person={profile} />
 

@@ -22,7 +22,11 @@ and follow-ups.
 - Owner dashboard, milestones, "ask for help", and blocking or deleting a
   participant: **built and tested locally; database part and the
   `manage-account` function applied to the hosted project**.
-- Not built yet: private notes, reminders, calendar, analytics. Messages
+- Calendar and reminders for everyone: task deadlines remind by themselves
+  (the owner for every task, each participant for their own), plus private
+  one-off, weekly or monthly reminders anyone can add: **built and tested locally;
+  database part applied to the hosted project**.
+- Not built yet: private notes, analytics. Messages
   refresh every few seconds rather than instantly.
 
 Docs: [plan in plain words](docs/PRD.md) · [architecture](docs/ARCHITECTURE.md) ·
@@ -58,6 +62,6 @@ Create the one administrator (once):
 Tests:
 
 ```
-npm run test:db                   # 160 database-level checks (pgTAP)
-npm run build && npm run test:real  # 77 end-to-end checks; WIPES local accounts
+npm run test:db                   # 181 database-level checks (pgTAP)
+npm run build && npm run test:real  # 85 end-to-end checks; WIPES local accounts
 ```

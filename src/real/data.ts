@@ -274,6 +274,47 @@ export function useSettings() {
   })
 }
 
+export interface Reminder {
+  id: string
+  participant_id: string | null
+  title: string
+  note: string | null
+  due_on: string
+  repeats: 'none' | 'weekly' | 'monthly'
+  done_at: string | null
+}
+
+/** The owner's reminders (a participant gets none back). Open ones, soonest first. */
+export function useReminders(enabled = true) {
+  return useQuery({
+    queryKey: ['reminders'],
+    enabled,
+    queryFn: () =>
+      unwrap<Reminder[]>(
+        supabase.from('reminders').select('id, participant_id, title, note, due_on, repeats, done_at').is('done_at', null).order('due_on'),
+      ),
+  })
+}
+
+/** How many days ahead a task deadline starts showing up as a reminder. */
+export const DEADLINE_WINDOW_DAYS = 3
+
+/** Tasks still waiting for work whose deadline is late or within the window. Soonest first. */
+export function upcomingDeadlines(tasks: Task[], today: string, withinDays = DEADLINE_WINDOW_DAYS): Task[] {
+  const limit = new Date(`${today}T00:00:00Z`)
+  limit.setUTCDate(limit.getUTCDate() + withinDays)
+  const last = limit.toISOString().slice(0, 10)
+  return tasks
+    .filter((t) => t.due_on && t.due_on <= last && ['not_started', 'in_progress', 'needs_revision'].includes(t.status))
+    .sort((a, b) => (a.due_on ?? '').localeCompare(b.due_on ?? ''))
+}
+
+/** Today's date as YYYY-MM-DD in the viewer's own time zone. */
+export function localToday(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export const daysSince = (iso: string | null) => (iso ? Math.floor((Date.now() - Date.parse(iso)) / 86_400_000) : Infinity)
 
 const today = () => new Date().toISOString().slice(0, 10)
