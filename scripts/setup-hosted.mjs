@@ -66,6 +66,43 @@ if (siteUrl) Object.assign(auth, { site_url: siteUrl, uri_allow_list: siteUrl })
 await call(`/projects/${ref}/config/auth`, { method: 'PATCH', body: auth })
 console.log(`Auth: public sign-up off, passwords at least 10 characters, links valid 24 hours${siteUrl ? `, site ${siteUrl}` : ''}`)
 
+// ---- Phone notifications ----
+// The send-push function needs a signing key pair and a secret it shares with
+// the database. The private parts go straight into Supabase's secret storage
+// (function secrets and Vault) and are never printed or written to the repo.
+// The PUBLIC key goes into .env.production for the web app.
+{
+  const { createECDH, randomBytes } = await import('node:crypto')
+  const { readFileSync: read, writeFileSync: write } = await import('node:fs')
+  const b64url = (buf) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  const literal = (text) => `'${String(text).replace(/'/g, "''")}'`
+  const secretNames = new Set((await call(`/projects/${ref}/secrets`)).map((x) => x.name))
+  const vaultReady = (await sql("select count(*)::int as n from vault.secrets where name in ('push_function_url', 'push_secret')"))[0].n === 2
+  const envFile = '.env.production'
+  const env = read(envFile, 'utf8')
+  const haveKeys = secretNames.has('VAPID_PUBLIC_KEY') && secretNames.has('VAPID_PRIVATE_KEY') && /^VITE_VAPID_PUBLIC_KEY=\S+/m.test(env)
+  const secrets = []
+  if (!haveKeys) {
+    const ecdh = createECDH('prime256v1')
+    ecdh.generateKeys()
+    const publicKey = b64url(ecdh.getPublicKey())
+    secrets.push({ name: 'VAPID_PUBLIC_KEY', value: publicKey }, { name: 'VAPID_PRIVATE_KEY', value: b64url(ecdh.getPrivateKey()) })
+    write(envFile, env.replace(/^VITE_VAPID_PUBLIC_KEY=.*\n?/m, '').replace(/\n?$/, '\n') + `VITE_VAPID_PUBLIC_KEY=${publicKey}\n`)
+  }
+  if (siteUrl) secrets.push({ name: 'VAPID_SUBJECT', value: siteUrl })
+  if (!secretNames.has('PUSH_SECRET') || !vaultReady) {
+    const pushSecret = b64url(randomBytes(32))
+    secrets.push({ name: 'PUSH_SECRET', value: pushSecret })
+    const functionUrl = `https://${ref}.supabase.co/functions/v1/send-push`
+    await sql(`
+      delete from vault.secrets where name in ('push_function_url', 'push_secret');
+      select vault.create_secret(${literal(functionUrl)}, 'push_function_url');
+      select vault.create_secret(${literal(pushSecret)}, 'push_secret');`)
+  }
+  if (secrets.length) await call(`/projects/${ref}/secrets`, { method: 'POST', body: secrets })
+  console.log(`Notifications: ${secrets.length ? `set ${secrets.map((x) => x.name).join(', ')}` : 'already set up'}${haveKeys ? '' : '; new public key written to .env.production'}`)
+}
+
 const keys = await call(`/projects/${ref}/api-keys`)
 const anon = keys.find((k) => k.name === 'anon') ?? keys.find((k) => k.type === 'publishable')
 console.log('\nPublic values for the web app (.env.local):')

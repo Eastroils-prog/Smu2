@@ -436,3 +436,7 @@ verify_jwt = true
 # Only signed-in callers reach this one; the database then checks they are the admin.
 [functions.manage-account]
 verify_jwt = true
+
+# Woken by the database, which proves itself with PUSH_SECRET (not a user token).
+[functions.send-push]
+verify_jwt = false

@@ -5,6 +5,7 @@ import { useAuth } from './auth'
 import { LoadError } from './Tasks'
 import { StageProgress } from './Home'
 import { DueReminders } from './Reminders'
+import { PhoneAppPrompt } from './PhoneApp'
 import {
   daysSince, dueLabel, isLate, progressOf, unreadFrom, useHelpRequests, useMessages, useMilestones, usePeople, useSettings,
   useSharedFiles, useStages, useTasks,
@@ -83,6 +84,7 @@ export function OwnerDashboard() {
   return (
     <>
       <PageTitle title="Dashboard" subtitle={`${greeting} Here is how your people are doing today.`} />
+      <PhoneAppPrompt />
 
       <dl className="grid grid-cols-2 gap-3 lg:grid-cols-3" data-testid="stats">
         {stats.map((s) => (

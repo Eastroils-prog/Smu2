@@ -15,6 +15,7 @@ import { MyMoney } from './Money'
 import { FilesPage } from './Files'
 import { PollsPage } from './Polls'
 import { OwnerDashboard } from './Dashboard'
+import { PhoneAppCard } from './PhoneApp'
 import { CalendarPage } from './Calendar'
 import { RemindersPage, useDueCount } from './Reminders'
 import { unreadTotal, useMessages, useSharedFiles, useStages, useTasks } from './data'
@@ -335,6 +336,7 @@ function MyProfilePage() {
         </form>
         {!isAdmin && <p className="mt-4 text-sm text-muted">Your username and e-mail cannot be changed here. Only the owner can change your stage.</p>}
       </Card>
+      <PhoneAppCard />
     </>
   )
 }
